@@ -42,6 +42,53 @@ npm run dev
 
 The anon key is safe to expose in a browser bundle **only because** every `sniper_bt_*` table has RLS enabled with a read-only `SELECT` policy and no write policies. Do not add write policies to these tables.
 
+## Deployment
+
+Deployed to GitHub Pages by `.github/workflows/deploy.yml` on every push to `main`
+(or manually from the Actions tab). Once set up, the site lives at:
+
+```
+https://gncreative-ai.github.io/sniper-levels-dashboard/
+```
+
+### One-time setup
+
+1. **Make the repository public.** GitHub Pages on a private repo requires a paid
+   plan. See the visibility note below before doing this.
+2. **Settings → Pages → Build and deployment → Source: `GitHub Actions`.**
+3. **Settings → Secrets and variables → Actions:**
+
+   | Tab | Name | Value |
+   |---|---|---|
+   | Variables | `VITE_SUPABASE_URL` | `https://qqkbkhzvhuocapcwzfwi.supabase.co` |
+   | Secrets | `VITE_SUPABASE_ANON_KEY` | the publishable key from Supabase → Project Settings → API |
+
+   Both are read at build time. If either is missing the workflow fails with an
+   explicit message rather than deploying a site whose every query errors.
+
+### What "public" actually means here
+
+This is a static SPA with no backend, so the Supabase key **must** ship inside the
+JavaScript bundle — that is inherent to the architecture, not a leak. Combined with
+the `SELECT USING (true)` RLS policy, it means **anyone who can load the deployed
+URL can read the entire `sniper_bt_*` dataset.** The key being public is fine and by
+design; the data being public is the part worth a deliberate decision.
+
+Nothing about this grants write access — there are no INSERT/UPDATE/DELETE policies
+on these tables, so the key cannot modify anything.
+
+If the dashboard should be reachable but the data gated, that needs Supabase Auth
+with user-scoped RLS policies and a sign-in flow — a different architecture from the
+one in `docs/SPEC.md`.
+
+### Base path
+
+`vite.config.ts` reads `VITE_BASE_PATH`, which the workflow sets to `/<repo-name>/`
+for Pages project sites. It defaults to `/` so `npm run dev` and any future custom
+domain work unchanged.
+
+---
+
 ## Project status
 
 Data pipeline: complete and validated. Dashboard: in development — see the phased build plan in `docs/SPEC.md` section 5.4.
