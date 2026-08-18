@@ -3,6 +3,10 @@ import { requireSupabase } from './supabase'
 import { toNum, toNumOrNull } from './num'
 import type {
   AtmBatch,
+  OptionCandle5m,
+  OptionCandle5mRow,
+  StrikeRef,
+  StrikeRefRow,
   DailySetup,
   DailySetupRow,
   SessionSetup,
@@ -14,7 +18,7 @@ import type {
   SpotCandleDailyRow,
 } from './types'
 import type { CalendarDay } from './calendar'
-import { isAtmBatch } from './types'
+import { isAtmBatch, isLegRole } from './types'
 import { toEpochSeconds } from './time'
 
 /**
@@ -30,7 +34,20 @@ export const TABLES = {
   spotCandlesDaily: 'sniper_bt_spot_candles_daily',
   dailySetup: 'sniper_bt_daily_setup',
   spotCandles5m: 'sniper_bt_spot_candles_5m',
+  strikeRefs: 'sniper_bt_strike_refs',
+  optionCandles5m: 'sniper_bt_option_candles_5m',
 } as const
+
+/**
+ * PostgREST caps how many rows one response may contain, so any query that can
+ * exceed the cap must page explicitly or it is silently truncated. 231 of the
+ * 233 sessions return more than 1000 option-candle rows, so this is not a
+ * theoretical concern — see fetchOptionCandles5m.
+ */
+const PAGE_SIZE = 1000
+
+/** Refuses to spin forever if the server ever stops honouring range requests. */
+const MAX_PAGES = 20
 
 /**
  * A Supabase read that failed, with Postgres' own details preserved.
@@ -256,4 +273,106 @@ export async function fetchSessionSetup(sessionDate: CalendarDay): Promise<Sessi
   }
 
   return setup
+}
+
+function toStrikeRef(row: StrikeRefRow): StrikeRef | null {
+  if (!isAtmBatch(row.atm_batch) || !isLegRole(row.leg_role)) return null
+
+  return {
+    sessionDate: row.session_date,
+    atmBatch: row.atm_batch,
+    legRole: row.leg_role,
+    strike: toNum(row.strike, 'strike'),
+    optionType: row.option_type,
+    expiry: row.expiry,
+    instrumentKey: row.instrument_key,
+  }
+}
+
+/**
+ * All 12 leg references for a session — every batch, every leg.
+ *
+ * Fetched together for the same reason the setup is: the batch toggle should
+ * not wait on a round trip, and 12 rows is nothing.
+ */
+export async function fetchStrikeRefs(sessionDate: CalendarDay): Promise<StrikeRef[]> {
+  const { data, error } = await requireSupabase()
+    .from(TABLES.strikeRefs)
+    .select('session_date, atm_batch, leg_role, strike, option_type, expiry, instrument_key')
+    .eq('session_date', sessionDate)
+
+  if (error) throw queryError(`Reading ${TABLES.strikeRefs} for ${sessionDate}`, error)
+
+  return (data ?? [])
+    .map((row) => toStrikeRef(row as StrikeRefRow))
+    .filter((ref): ref is StrikeRef => ref !== null)
+}
+
+function toOptionCandle5m(row: OptionCandle5mRow): OptionCandle5m | null {
+  const epochSeconds = toEpochSeconds(row.candle_timestamp)
+  if (epochSeconds === null) return null
+
+  return {
+    instrumentKey: row.instrument_key,
+    candleDate: row.candle_date,
+    epochSeconds,
+    open: toNum(row.open, 'open'),
+    high: toNum(row.high, 'high'),
+    low: toNum(row.low, 'low'),
+    close: toNum(row.close, 'close'),
+    volume: toNumOrNull(row.volume, 'volume'),
+  }
+}
+
+/**
+ * Premium bars for the given instruments across the given trading days.
+ *
+ * Queried by instrument_key and candle_date rather than scanning the table
+ * (spec §5.2). A session's 8 distinct instruments over two days come to roughly
+ * 1200 rows, which is over PostgREST's per-response cap, so this pages until a
+ * short page arrives. Without that, the last legs to sort would silently lose
+ * their bars — a chart that is wrong rather than obviously broken.
+ *
+ * The order is also what makes paging correct: it must be total and stable
+ * across requests, or rows can be skipped or repeated between pages.
+ */
+export async function fetchOptionCandles5m(
+  instrumentKeys: string[],
+  candleDates: CalendarDay[],
+): Promise<OptionCandle5m[]> {
+  if (instrumentKeys.length === 0 || candleDates.length === 0) return []
+
+  const client = requireSupabase()
+  const rows: OptionCandle5mRow[] = []
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const from = page * PAGE_SIZE
+
+    const { data, error } = await client
+      .from(TABLES.optionCandles5m)
+      .select('instrument_key, candle_date, candle_timestamp, open, high, low, close, volume')
+      .in('instrument_key', instrumentKeys)
+      .in('candle_date', candleDates)
+      .order('instrument_key', { ascending: true })
+      .order('candle_timestamp', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+
+    if (error) throw queryError(`Reading ${TABLES.optionCandles5m}`, error)
+
+    const batch = (data ?? []) as OptionCandle5mRow[]
+    rows.push(...batch)
+
+    if (batch.length < PAGE_SIZE) return finishOptionCandles(rows)
+  }
+
+  throw new Error(
+    `Reading ${TABLES.optionCandles5m}: stopped after ${MAX_PAGES} pages ` +
+      `(${rows.length} rows). Refusing to keep paging — the result would be incomplete either way.`,
+  )
+}
+
+function finishOptionCandles(rows: OptionCandle5mRow[]): OptionCandle5m[] {
+  return rows
+    .map((row) => toOptionCandle5m(row))
+    .filter((candle): candle is OptionCandle5m => candle !== null)
 }

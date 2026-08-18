@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { ActiveSessionPanel } from './components/ActiveSessionPanel'
 import { DateRangeSelector, type DateRange } from './components/DateRangeSelector'
 import { ControlBar } from './components/ControlBar'
+import { LegQuadrantPanel } from './components/LegQuadrantPanel'
 import { SessionScrubber } from './components/SessionScrubber'
 import { SpotChartPanel } from './components/SpotChartPanel'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './components/StatusPanels'
@@ -45,7 +46,7 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 4 — overlays and ATM batch toggle. Read-only: this dashboard never writes to Supabase.
+            Phase 5 — four leg charts. Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
@@ -220,6 +221,8 @@ function SessionOverlays({
           rebuild the chart instance on every selection, losing the zoom and pan
           state that phase 7 builds on. The panel refetches and swaps its data. */}
       <SpotChartPanel sessionDate={sessionDate} setup={setup[batch]} visibility={visibility} />
+
+      <LegQuadrantPanel setup={setup[batch]} batch={batch} />
     </>
   )
 }
