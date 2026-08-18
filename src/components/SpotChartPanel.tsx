@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { SpotChart } from './SpotChart'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './StatusPanels'
 import { useAsync } from '../hooks/useAsync'
@@ -6,6 +6,8 @@ import type { CalendarDay } from '../lib/calendar'
 import { formatCount, formatSessionDate } from '../lib/format'
 import { fetchSpotCandles5m } from '../lib/queries'
 import { formatIstTime } from '../lib/time'
+import { absentOverlays, resolveOverlays, type OverlayVisibility } from '../lib/overlays'
+import type { DailySetup } from '../lib/types'
 
 /**
  * Owns fetching the active session's spot bars and the states around them.
@@ -14,13 +16,26 @@ import { formatIstTime } from '../lib/time'
  * stays a dumb renderer so phases 4 and 6 can layer overlays and replay onto it
  * without this component growing responsibilities.
  */
-export function SpotChartPanel({ sessionDate }: { sessionDate: CalendarDay }) {
+export function SpotChartPanel({
+  sessionDate,
+  setup,
+  visibility,
+}: {
+  sessionDate: CalendarDay
+  setup: DailySetup | undefined
+  visibility: OverlayVisibility
+}) {
   const load = useCallback(() => fetchSpotCandles5m(sessionDate), [sessionDate])
   const { state, reload } = useAsync(load, [sessionDate], { keepPreviousData: true })
 
   const candles = state.status === 'ready' ? state.data : []
   const first = candles[0]
   const last = candles[candles.length - 1]
+
+  // Memoised so the chart's overlay effect only re-runs when the lines actually
+  // change, rather than on every render of this panel.
+  const overlays = useMemo(() => resolveOverlays(setup, visibility), [setup, visibility])
+  const absent = useMemo(() => absentOverlays(setup, visibility), [setup, visibility])
 
   return (
     <section className="flex flex-col gap-2">
@@ -51,9 +66,18 @@ export function SpotChartPanel({ sessionDate }: { sessionDate: CalendarDay }) {
               state.refreshing ? 'opacity-50' : 'opacity-100'
             }`}
           >
-            <SpotChart candles={candles} />
+            <SpotChart candles={candles} overlays={overlays} />
           </div>
         ))}
+
+      {/* Absent overlays are stated rather than silently missing: a toggle that
+          is on but draws nothing would otherwise look like a broken switch. */}
+      {absent.length > 0 && (
+        <p className="font-mono text-[11px] text-zinc-500">
+          Not drawn for this batch — {absent.map((overlay) => overlay.label).join(', ')}: no value
+          in the source data. Shown as absent rather than zero.
+        </p>
+      )}
 
       {/* A short session is real data, not a gap — say so rather than letting a
           sparse chart read as broken. The Diwali Muhurat session has 12 bars. */}

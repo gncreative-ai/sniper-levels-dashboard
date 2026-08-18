@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { ActiveSessionPanel } from './components/ActiveSessionPanel'
 import { DateRangeSelector, type DateRange } from './components/DateRangeSelector'
+import { ControlBar } from './components/ControlBar'
 import { SessionScrubber } from './components/SessionScrubber'
 import { SpotChartPanel } from './components/SpotChartPanel'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './components/StatusPanels'
@@ -8,9 +9,10 @@ import { useAsync } from './hooks/useAsync'
 import { addCalendarMonths, clampCalendarDay } from './lib/calendar'
 import type { CalendarDay } from './lib/calendar'
 import { formatCount } from './lib/format'
-import { fetchSessionBounds, fetchSessionsInRange, TABLES } from './lib/queries'
+import { fetchSessionBounds, fetchSessionSetup, fetchSessionsInRange, TABLES } from './lib/queries'
 import { supabaseProjectRef } from './lib/supabase'
-import type { SessionBounds } from './lib/types'
+import type { AtmBatch, SessionBounds } from './lib/types'
+import { DEFAULT_OVERLAY_VISIBILITY, type OverlayId } from './lib/overlays'
 
 /** Sessions shown on first load. The full range stays one click away. */
 const DEFAULT_RANGE_MONTHS = 3
@@ -43,7 +45,7 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 3 — main spot chart. Read-only: this dashboard never writes to Supabase.
+            Phase 4 — overlays and ATM batch toggle. Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
@@ -71,6 +73,15 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
 
   // null means "follow the range" — resolved to the newest session in view below.
   const [selectedDate, setSelectedDate] = useState<CalendarDay | null>(null)
+
+  // Batch and overlay visibility are view preferences, so they persist across
+  // session changes rather than resetting every time the scrubber moves.
+  const [batch, setBatch] = useState<AtmBatch>('nearest')
+  const [visibility, setVisibility] = useState(DEFAULT_OVERLAY_VISIBILITY)
+
+  const toggleOverlay = useCallback((id: OverlayId) => {
+    setVisibility((current) => ({ ...current, [id]: !current[id] }))
+  }, [])
 
   const loadSessions = useCallback(
     () => fetchSessionsInRange(range.from, range.to),
@@ -144,14 +155,72 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
             total={sessions.length}
             onStep={step}
           />
-          {/* Deliberately not keyed on the session: remounting would tear down
-              and rebuild the chart instance on every selection, losing the zoom
-              and pan state that phase 7 builds on. The panel refetches and swaps
-              its data instead. */}
-          <SpotChartPanel sessionDate={activeSession.candleDate} />
+          <SessionOverlays
+            sessionDate={activeSession.candleDate}
+            batch={batch}
+            onBatchChange={setBatch}
+            visibility={visibility}
+            onToggleOverlay={toggleOverlay}
+          />
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * Fetches the session's three ATM batches and renders the control bar plus the
+ * spot chart beneath it.
+ *
+ * Owns the setup fetch so the control bar and the chart's overlay lines read
+ * from one result — showing a batch's numbers next to lines drawn from a
+ * different fetch would be a subtle way to mislead.
+ */
+function SessionOverlays({
+  sessionDate,
+  batch,
+  onBatchChange,
+  visibility,
+  onToggleOverlay,
+}: {
+  sessionDate: CalendarDay
+  batch: AtmBatch
+  onBatchChange: (batch: AtmBatch) => void
+  visibility: typeof DEFAULT_OVERLAY_VISIBILITY
+  onToggleOverlay: (id: OverlayId) => void
+}) {
+  const load = useCallback(() => fetchSessionSetup(sessionDate), [sessionDate])
+  const { state, reload } = useAsync(load, [sessionDate], { keepPreviousData: true })
+
+  const setup = state.status === 'ready' ? state.data : {}
+  const hasAnyBatch = Object.keys(setup).length > 0
+
+  return (
+    <>
+      {state.status === 'loading' && <LoadingPanel label="Loading session setup…" />}
+
+      {state.status === 'error' && (
+        <ErrorPanel title="Could not load session setup" error={state.error} onRetry={reload} />
+      )}
+
+      {state.status === 'ready' &&
+        (hasAnyBatch ? (
+          <ControlBar
+            setup={setup}
+            batch={batch}
+            onBatchChange={onBatchChange}
+            visibility={visibility}
+            onVisibilityChange={onToggleOverlay}
+          />
+        ) : (
+          <EmptyPanel message="No setup rows for this session, so there are no overlay levels to draw." />
+        ))}
+
+      {/* Deliberately not keyed on the session: remounting would tear down and
+          rebuild the chart instance on every selection, losing the zoom and pan
+          state that phase 7 builds on. The panel refetches and swaps its data. */}
+      <SpotChartPanel sessionDate={sessionDate} setup={setup[batch]} visibility={visibility} />
+    </>
   )
 }
 
