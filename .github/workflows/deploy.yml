@@ -32,18 +32,23 @@ jobs:
       # Vite inlines these at build time. Without them the site deploys but
       # every query fails, so fail here instead — a red build is easier to
       # diagnose than a live page erroring in someone's browser.
+      #
+      # Each value is accepted from either a secret or a variable. The
+      # publishable key ends up in the client bundle either way, so which tab
+      # it was entered under is not a security boundary — and making the
+      # workflow care about that distinction only creates a way to get it wrong.
       - name: Check Supabase configuration is present
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
         run: |
           missing=0
           if [ -z "$VITE_SUPABASE_URL" ]; then
-            echo "::error::Repository variable VITE_SUPABASE_URL is not set (Settings > Secrets and variables > Actions > Variables)."
+            echo "::error::VITE_SUPABASE_URL is not set. Add it under Settings > Secrets and variables > Actions, as either a variable or a secret."
             missing=1
           fi
           if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
-            echo "::error::Repository secret VITE_SUPABASE_ANON_KEY is not set (Settings > Secrets and variables > Actions > Secrets)."
+            echo "::error::VITE_SUPABASE_ANON_KEY is not set. Add it under Settings > Secrets and variables > Actions, as either a secret or a variable. Note the Secrets and Variables tabs are separate — a value added to one is not visible to the other."
             missing=1
           fi
           [ "$missing" -eq 0 ] || exit 1
@@ -52,8 +57,8 @@ jobs:
         env:
           # Project sites are served from https://<user>.github.io/<repo>/
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       # Pages serves the artifact as-is, but this keeps any future underscore-

@@ -56,12 +56,17 @@ https://gncreative-ai.github.io/sniper-levels-dashboard/
 1. **Make the repository public.** GitHub Pages on a private repo requires a paid
    plan. See the visibility note below before doing this.
 2. **Settings → Pages → Build and deployment → Source: `GitHub Actions`.**
-3. **Settings → Secrets and variables → Actions:**
+3. **Settings → Secrets and variables → Actions** — add both values:
 
-   | Tab | Name | Value |
-   |---|---|---|
-   | Variables | `VITE_SUPABASE_URL` | `https://qqkbkhzvhuocapcwzfwi.supabase.co` |
-   | Secrets | `VITE_SUPABASE_ANON_KEY` | the publishable key from Supabase → Project Settings → API |
+   | Name | Value |
+   |---|---|
+   | `VITE_SUPABASE_URL` | `https://qqkbkhzvhuocapcwzfwi.supabase.co` |
+   | `VITE_SUPABASE_ANON_KEY` | the publishable key from Supabase → Project Settings → API |
+
+   Either can go under the **Secrets** or the **Variables** tab — the workflow
+   reads both places. Note the two tabs are separate stores: a value added to
+   one is not visible to the other, which is an easy way to end up with a
+   half-configured build.
 
    Both are read at build time. If either is missing the workflow fails with an
    explicit message rather than deploying a site whose every query errors.
