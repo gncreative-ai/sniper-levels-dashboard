@@ -159,3 +159,71 @@ export interface DailySetup {
 
 /** All three batches for one session, keyed by batch. A batch may be missing. */
 export type SessionSetup = Partial<Record<AtmBatch, DailySetup>>
+
+/** The four legs tracked per ATM batch. */
+export const LEG_ROLES = ['ATM_CE', 'ATM_PE', 'OTM_CE', 'OTM_PE'] as const
+export type LegRole = (typeof LEG_ROLES)[number]
+
+export const LEG_ROLE_LABELS: Record<LegRole, string> = {
+  ATM_CE: 'ATM CE',
+  ATM_PE: 'ATM PE',
+  OTM_CE: 'OTM CE',
+  OTM_PE: 'OTM PE',
+}
+
+export function isLegRole(value: string): value is LegRole {
+  return (LEG_ROLES as readonly string[]).includes(value)
+}
+
+/** sniper_bt_strike_refs — 12 rows per session (3 batches x 4 legs). */
+export interface StrikeRefRow {
+  session_date: string
+  atm_batch: string
+  leg_role: string
+  strike: RawNumeric
+  option_type: string
+  expiry: string
+  instrument_key: string
+}
+
+/**
+ * One leg's contract for a session and batch.
+ *
+ * The same instrument_key legitimately appears under several (batch, leg_role)
+ * pairs — one batch's OTM leg is a neighbouring batch's ATM leg. Every session
+ * has 12 leg rows covering exactly 8 distinct instruments. That is the dedup
+ * design working, not duplicate data.
+ */
+export interface StrikeRef {
+  sessionDate: CalendarDay
+  atmBatch: AtmBatch
+  legRole: LegRole
+  strike: number
+  optionType: string
+  expiry: CalendarDay
+  instrumentKey: string
+}
+
+/** sniper_bt_option_candles_5m — keyed by instrument, not by session or leg. */
+export interface OptionCandle5mRow {
+  instrument_key: string
+  candle_date: string
+  candle_timestamp: string
+  open: RawNumeric
+  high: RawNumeric
+  low: RawNumeric
+  close: RawNumeric
+  volume: RawNumericNullable
+}
+
+export interface OptionCandle5m {
+  instrumentKey: string
+  /** Which trading day this bar belongs to — used to split prev from today. */
+  candleDate: CalendarDay
+  epochSeconds: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number | null
+}
