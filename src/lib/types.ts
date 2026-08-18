@@ -64,3 +64,30 @@ export interface SessionBounds {
 export interface SessionSummary extends SpotCandleDaily {
   hasSetup: boolean
 }
+
+/** sniper_bt_spot_candles_5m — Nifty spot intraday, one row per 5-minute bar. */
+export interface SpotCandle5mRow {
+  candle_timestamp: string
+  open: RawNumeric
+  high: RawNumeric
+  low: RawNumeric
+  close: RawNumeric
+  volume: RawNumericNullable
+}
+
+export interface SpotCandle5m {
+  /**
+   * The bar's real instant, as epoch seconds UTC.
+   *
+   * Deliberately not a chart time — see `lib/time.ts`. The shift into the
+   * charting library's fake-UTC space happens at the chart boundary, so
+   * everything upstream keeps working with genuine instants.
+   */
+  epochSeconds: number
+  open: number
+  high: number
+  low: number
+  close: number
+  /** Usually 0 or null for an index. */
+  volume: number | null
+}

@@ -42,6 +42,29 @@ npm run dev
 
 The anon key is safe to expose in a browser bundle **only because** every `sniper_bt_*` table has RLS enabled with a read-only `SELECT` policy and no write policies. Do not add write policies to these tables.
 
+## A data characteristic worth knowing
+
+`sniper_bt_spot_candles_daily.close` is **not** the last 5-minute bar's close, and
+this is expected rather than a defect. Across all 237 sessions:
+
+| Field | Daily row vs. aggregated 5-min bars |
+|---|---|
+| `open` | identical in 237/237 |
+| `high` | identical in 234/237 (max difference 2.65) |
+| `low` | identical in 236/237 (max difference 0.50) |
+| `close` | **differs in 227/237** — mean 13.24, max 85.70, in both directions |
+
+The intraday feed ends at 15:25 IST (see `docs/SPEC.md` §2 — data outside the
+session window is filtered upstream), while the daily close is the official
+end-of-session value. `sniper_bt_daily_setup.prev_close` matches the daily close
+in 699/699 rows and the last 5-min bar in only 18, so the pipeline uses official
+closes consistently.
+
+Practical consequence: the "Prev Close" overlay line will not sit on top of the
+previous day's final candle. That is correct, not a rendering bug.
+
+---
+
 ## Deployment
 
 Deployed to GitHub Pages by `.github/workflows/deploy.yml` on every push to `main`
@@ -102,7 +125,7 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 |---|---|
 | 1 — Skeleton + Supabase connection | ✅ Done |
 | 2 — Session selection | ✅ Done |
-| 3 — Main spot chart | Not started |
+| 3 — Main spot chart | ✅ Done |
 | 4 — Overlays + batch toggle | Not started |
 | 5 — Four leg charts | Not started |
 | 6 — Replay | Not started |
@@ -121,3 +144,4 @@ All Supabase reads go through `src/lib/`, not through components:
 | `types.ts` | `*Row` (raw, strings) vs. domain types (numbers), so the coercion boundary is compiler-visible. |
 | `format.ts` | Display formatting. Calendar dates never pass through `new Date()`; instants render in IST. |
 | `calendar.ts` | Calendar-day arithmetic on `'YYYY-MM-DD'` strings, UTC-anchored — never browser-local. |
+| `time.ts` | Instants vs. chart times. Lightweight Charts renders in UTC, so values are shifted by IST's fixed +05:30 for display. Read the module comment before touching it. |

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { ActiveSessionPanel } from './components/ActiveSessionPanel'
 import { DateRangeSelector, type DateRange } from './components/DateRangeSelector'
 import { SessionScrubber } from './components/SessionScrubber'
+import { SpotChartPanel } from './components/SpotChartPanel'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './components/StatusPanels'
 import { useAsync } from './hooks/useAsync'
 import { addCalendarMonths, clampCalendarDay } from './lib/calendar'
@@ -42,7 +43,7 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 2 — session selection. Read-only: this dashboard never writes to Supabase.
+            Phase 3 — main spot chart. Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
@@ -136,12 +137,19 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
       </section>
 
       {activeSession && (
-        <ActiveSessionPanel
-          session={activeSession}
-          index={activeIndex}
-          total={sessions.length}
-          onStep={step}
-        />
+        <>
+          <ActiveSessionPanel
+            session={activeSession}
+            index={activeIndex}
+            total={sessions.length}
+            onStep={step}
+          />
+          {/* Deliberately not keyed on the session: remounting would tear down
+              and rebuild the chart instance on every selection, losing the zoom
+              and pan state that phase 7 builds on. The panel refetches and swaps
+              its data instead. */}
+          <SpotChartPanel sessionDate={activeSession.candleDate} />
+        </>
       )}
     </div>
   )
@@ -155,18 +163,20 @@ function Header({
   totalSessions: number | null
 }) {
   return (
-    <header className="border-b border-zinc-800 pb-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-zinc-100">
+    <header className="border-b border-zinc-800 pb-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">
             Sniper Levels — Backtest Dashboard
           </h1>
-          <p className="mt-1 font-mono text-xs text-zinc-500">
+          <p className="mt-1 font-mono text-[11px] text-zinc-500 sm:text-xs">
             Nifty 50 weekly options · read-only visual inspection
           </p>
         </div>
 
-        <dl className="flex flex-wrap items-end gap-6">
+        {/* Left-aligned below sm: the project ref is a long unbroken string, and
+            right-aligning it in a narrow viewport pushed it past the edge. */}
+        <dl className="flex min-w-0 flex-wrap items-end gap-x-6 gap-y-2">
           <Stat label="Sessions in table">
             {totalSessions === null ? '—' : formatCount(totalSessions)}
           </Stat>
@@ -179,9 +189,9 @@ function Header({
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="text-right">
+    <div className="min-w-0 text-left sm:text-right">
       <dt className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</dt>
-      <dd className="font-mono text-sm text-amber-400">{children}</dd>
+      <dd className="break-all font-mono text-xs text-amber-400 sm:text-sm">{children}</dd>
     </div>
   )
 }
