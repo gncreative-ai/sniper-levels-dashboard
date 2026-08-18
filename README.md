@@ -45,3 +45,26 @@ The anon key is safe to expose in a browser bundle **only because** every `snipe
 ## Project status
 
 Data pipeline: complete and validated. Dashboard: in development — see the phased build plan in `docs/SPEC.md` section 5.4.
+
+| Phase | Status |
+|---|---|
+| 1 — Skeleton + Supabase connection | ✅ Done |
+| 2 — Session selection | Not started |
+| 3 — Main spot chart | Not started |
+| 4 — Overlays + batch toggle | Not started |
+| 5 — Four leg charts | Not started |
+| 6 — Replay | Not started |
+| 7 — Crosshair sync + zoom/pan | Not started |
+| 8 — Draw tools | Not started |
+
+### Data access layer
+
+All Supabase reads go through `src/lib/`, not through components:
+
+| File | Responsibility |
+|---|---|
+| `supabase.ts` | The read-only client. Surfaces config problems as a readable error instead of a blank page. |
+| `queries.ts` | Every query in the app. Nothing leaves this module un-coerced. |
+| `num.ts` | The numeric coercion boundary — PostgREST returns `numeric`/`bigint` as strings. Nulls stay null. |
+| `types.ts` | `*Row` (raw, strings) vs. domain types (numbers), so the coercion boundary is compiler-visible. |
+| `format.ts` | Display formatting. Calendar dates never pass through `new Date()`; instants render in IST. |
