@@ -129,7 +129,7 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 | 4 — Overlays + batch toggle | ✅ Done |
 | 5 — Four leg charts | ✅ Done |
 | 6 — Replay | ✅ Done |
-| 7 — Crosshair sync + zoom/pan | Not started |
+| 7 — Crosshair sync + zoom/pan | ✅ Done |
 | 8 — Draw tools | Not started |
 
 ### Data access layer
@@ -146,6 +146,7 @@ All Supabase reads go through `src/lib/`, not through components:
 | `calendar.ts` | Calendar-day arithmetic on `'YYYY-MM-DD'` strings, UTC-anchored — never browser-local. |
 | `legs.ts` | Assembles the four leg series per batch, and owns the fixed quadrant order. |
 | `replay.ts` | Converts a revealed-bar count into a cutoff *instant*, shared by the spot chart and all four leg charts despite their different bar counts. |
+| `chartSync.ts` | Cross-chart crosshair sync. Each chart supplies its own price at a given time rather than the hovered chart's price being forwarded — see the module comment. |
 | `chartTheme.ts` | Shared chart appearance and the overlay autoscale provider, so all five charts stay one panel. |
 | `overlays.ts` | The six overlay lines defined once — colour, style, and where each value comes from. Null means draw nothing, never zero. |
 | `time.ts` | Instants vs. chart times. Lightweight Charts renders in UTC, so values are shifted by IST's fixed +05:30 for display. Read the module comment before touching it. |

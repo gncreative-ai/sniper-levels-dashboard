@@ -10,6 +10,7 @@ import {
 } from 'lightweight-charts'
 import type { LegSeries } from '../lib/legs'
 import { toChartTime } from '../lib/time'
+import { useChartSync } from '../hooks/useChartSync'
 import {
   CANDLE_SERIES_OPTIONS,
   LINE_STYLES,
@@ -28,7 +29,8 @@ import type { OverlayStyle } from '../lib/overlays'
  *
  * The prior-day portion is always drawn in full and is never subject to replay
  * (phase 6): prior-day thresholds are known before the session starts, and only
- * today's action is what unfolds.
+ * today's action is what unfolds. Cross-chart crosshair sync (spec §4.5) is
+ * registered via useChartSync, same as the main spot chart.
  */
 
 /** Per spec §4.4, drawn on this leg's own premium scale. */
@@ -172,6 +174,11 @@ export function LegChart({ leg }: { leg: LegSeries }) {
       for (const priceLine of priceLines) series.removePriceLine(priceLine)
     }
   }, [lines])
+
+  // Declared after the chart-creation effect above, for the same ordering
+  // reason as the overlay-lines effect: chartRef/seriesRef must already be
+  // populated.
+  useChartSync(chartRef, seriesRef, data)
 
   return (
     <div className="relative h-full w-full">

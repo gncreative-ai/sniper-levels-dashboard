@@ -77,6 +77,15 @@ export function baseChartOptions(fontSize: number): DeepPartial<ChartOptions> {
       timeVisible: true,
       secondsVisible: false,
       tickMarkFormatter: (time: UTCTimestamp) => formatIstTime(fromChartTime(time)),
+      // Zoom/pan bounds (spec §4.5): a chart must not zoom into nothing —
+      // library default minBarSpacing (0.5px) lets bars shrink sub-pixel and
+      // vanish — nor zoom in so far a single candle fills the pane with
+      // nothing else visible. Panning is similarly bounded to the data itself
+      // rather than into empty space on either side.
+      minBarSpacing: 2,
+      maxBarSpacing: 60,
+      fixLeftEdge: true,
+      fixRightEdge: true,
     },
     localization: {
       timeFormatter: (time: UTCTimestamp) => `${formatIstTime(fromChartTime(time))} IST`,

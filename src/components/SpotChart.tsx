@@ -11,6 +11,7 @@ import {
 import type { SpotCandle5m } from '../lib/types'
 import type { ResolvedOverlay } from '../lib/overlays'
 import { toChartTime } from '../lib/time'
+import { useChartSync } from '../hooks/useChartSync'
 import {
   CANDLE_SERIES_OPTIONS,
   LINE_STYLES,
@@ -22,7 +23,9 @@ import {
  * The active session's Nifty spot candles at 5-minute resolution, with the six
  * overlay reference lines drawn on the spot price scale.
  *
- * Replay is phase 6; cross-chart crosshair sync is phase 7.
+ * Cross-chart crosshair sync (spec §4.5) is registered via useChartSync — see
+ * that module for why each chart supplies its own price at a given time
+ * rather than the hovered chart's price being forwarded directly.
  */
 export function SpotChart({
   candles,
@@ -117,6 +120,11 @@ export function SpotChart({
       for (const line of lines) series.removePriceLine(line)
     }
   }, [overlays])
+
+  // Declared after the chart-creation effect above: React runs effects in
+  // declaration order, so chartRef/seriesRef are already populated by the time
+  // this one registers with the sync group.
+  useChartSync(chartRef, seriesRef, data)
 
   return <div ref={containerRef} className="h-full w-full" />
 }
