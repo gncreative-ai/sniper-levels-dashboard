@@ -1,0 +1,187 @@
+import { useCallback, useMemo, useState } from 'react'
+import { ActiveSessionPanel } from './components/ActiveSessionPanel'
+import { DateRangeSelector, type DateRange } from './components/DateRangeSelector'
+import { SessionScrubber } from './components/SessionScrubber'
+import { EmptyPanel, ErrorPanel, LoadingPanel } from './components/StatusPanels'
+import { useAsync } from './hooks/useAsync'
+import { addCalendarMonths, clampCalendarDay } from './lib/calendar'
+import type { CalendarDay } from './lib/calendar'
+import { formatCount } from './lib/format'
+import { fetchSessionBounds, fetchSessionsInRange, TABLES } from './lib/queries'
+import { supabaseProjectRef } from './lib/supabase'
+import type { SessionBounds } from './lib/types'
+
+/** Sessions shown on first load. The full range stays one click away. */
+const DEFAULT_RANGE_MONTHS = 3
+
+export default function App() {
+  const { state, reload } = useAsync(fetchSessionBounds, [])
+
+  return (
+    <div className="min-h-full bg-zinc-950">
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <Header
+          projectRef={supabaseProjectRef}
+          totalSessions={state.status === 'ready' && state.data ? state.data.total : null}
+        />
+
+        <main className="mt-6">
+          {state.status === 'loading' && <LoadingPanel label="Loading session index…" />}
+
+          {state.status === 'error' && (
+            <ErrorPanel title="Supabase query failed" error={state.error} onRetry={reload} />
+          )}
+
+          {state.status === 'ready' &&
+            (state.data === null ? (
+              <EmptyPanel message={`${TABLES.spotCandlesDaily} contains no sessions.`} />
+            ) : (
+              <SessionBrowser bounds={state.data} />
+            ))}
+        </main>
+
+        <footer className="mt-8 border-t border-zinc-900 pt-4">
+          <p className="font-mono text-xs text-zinc-600">
+            Phase 2 — session selection. Read-only: this dashboard never writes to Supabase.
+          </p>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Owns the two pieces of selection state: the browsable window, and which
+ * session inside it is active.
+ *
+ * Per spec 4.3 these are separate concerns — changing the range only changes
+ * which dates the scrubber offers. The active session follows only when the
+ * current one falls outside the new window.
+ */
+function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
+  const [range, setRange] = useState<DateRange>(() => ({
+    from: clampCalendarDay(
+      addCalendarMonths(bounds.last, -DEFAULT_RANGE_MONTHS),
+      bounds.first,
+      bounds.last,
+    ),
+    to: bounds.last,
+  }))
+
+  // null means "follow the range" — resolved to the newest session in view below.
+  const [selectedDate, setSelectedDate] = useState<CalendarDay | null>(null)
+
+  const loadSessions = useCallback(
+    () => fetchSessionsInRange(range.from, range.to),
+    [range.from, range.to],
+  )
+
+  const { state, reload } = useAsync(loadSessions, [range.from, range.to], {
+    keepPreviousData: true,
+  })
+
+  const sessions = state.status === 'ready' ? state.data : []
+
+  /**
+   * Derived rather than stored, so a range change can never strand the
+   * selection on a date that is no longer in view.
+   */
+  const activeIndex = useMemo(() => {
+    if (sessions.length === 0) return -1
+    const found = sessions.findIndex((session) => session.candleDate === selectedDate)
+    return found === -1 ? sessions.length - 1 : found
+  }, [sessions, selectedDate])
+
+  const activeSession = activeIndex === -1 ? null : sessions[activeIndex] ?? null
+
+  const step = useCallback(
+    (delta: number) => {
+      const next = sessions[activeIndex + delta]
+      if (next) setSelectedDate(next.candleDate)
+    },
+    [sessions, activeIndex],
+  )
+
+  return (
+    <div className="flex flex-col gap-4">
+      <DateRangeSelector bounds={bounds} range={range} onChange={setRange} />
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="font-mono text-sm text-zinc-400">Sessions</h2>
+          <span className="font-mono text-xs text-zinc-600">
+            {state.status === 'ready'
+              ? `${formatCount(sessions.length)} in range · ${formatCount(bounds.total)} total`
+              : '—'}
+          </span>
+        </div>
+
+        {state.status === 'loading' && <LoadingPanel label="Loading sessions in range…" />}
+
+        {state.status === 'error' && (
+          <ErrorPanel title="Supabase query failed" error={state.error} onRetry={reload} />
+        )}
+
+        {state.status === 'ready' &&
+          (sessions.length === 0 ? (
+            <EmptyPanel message="No trading sessions fall inside the selected date range." />
+          ) : (
+            <SessionScrubber
+              sessions={sessions}
+              activeDate={activeSession?.candleDate ?? null}
+              onSelect={setSelectedDate}
+              refreshing={state.refreshing}
+            />
+          ))}
+      </section>
+
+      {activeSession && (
+        <ActiveSessionPanel
+          session={activeSession}
+          index={activeIndex}
+          total={sessions.length}
+          onStep={step}
+        />
+      )}
+    </div>
+  )
+}
+
+function Header({
+  projectRef,
+  totalSessions,
+}: {
+  projectRef: string
+  totalSessions: number | null
+}) {
+  return (
+    <header className="border-b border-zinc-800 pb-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight text-zinc-100">
+            Sniper Levels — Backtest Dashboard
+          </h1>
+          <p className="mt-1 font-mono text-xs text-zinc-500">
+            Nifty 50 weekly options · read-only visual inspection
+          </p>
+        </div>
+
+        <dl className="flex flex-wrap items-end gap-6">
+          <Stat label="Sessions in table">
+            {totalSessions === null ? '—' : formatCount(totalSessions)}
+          </Stat>
+          <Stat label="Supabase project">{projectRef || '—'}</Stat>
+        </dl>
+      </div>
+    </header>
+  )
+}
+
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="text-right">
+      <dt className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</dt>
+      <dd className="font-mono text-sm text-amber-400">{children}</dd>
+    </div>
+  )
+}
