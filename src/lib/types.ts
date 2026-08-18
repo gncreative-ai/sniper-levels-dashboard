@@ -91,3 +91,71 @@ export interface SpotCandle5m {
   /** Usually 0 or null for an index. */
   volume: number | null
 }
+
+/**
+ * The three ATM batches computed for every session (spec §3).
+ *
+ * Each is the prior close rounded to the nearest 100, then offset: 'nearest' is
+ * the rounded strike itself, 'before' is −100, 'after' is +100. Each carries its
+ * own legs and its own sniper point, computed independently.
+ */
+export const ATM_BATCHES = ['nearest', 'before', 'after'] as const
+export type AtmBatch = (typeof ATM_BATCHES)[number]
+
+export const ATM_BATCH_LABELS: Record<AtmBatch, string> = {
+  nearest: 'Nearest',
+  before: 'Before',
+  after: 'After',
+}
+
+export function isAtmBatch(value: string): value is AtmBatch {
+  return (ATM_BATCHES as readonly string[]).includes(value)
+}
+
+/** sniper_bt_daily_setup — three rows per session, one per ATM batch. */
+export interface DailySetupRow {
+  session_date: string
+  atm_batch: string
+  prev_session_date: string
+  prev_close: RawNumeric
+  prev_high: RawNumeric
+  prev_low: RawNumeric
+  atm_center: RawNumeric
+  otm_ce_strike: RawNumeric
+  otm_pe_strike: RawNumeric
+  otm_ce_settle: RawNumericNullable
+  otm_pe_settle: RawNumericNullable
+  sniper_point: RawNumericNullable
+  spot_sniper_upper: RawNumericNullable
+  spot_sniper_lower: RawNumericNullable
+  weekly_expiry: string
+}
+
+/**
+ * One batch's frozen evening calculation for a session.
+ *
+ * The nullable fields cascade together and their absence is real data, not a
+ * gap to paper over: when an OTM leg had no trades in the lookback window its
+ * settle is null, which makes sniper_point null, which makes both spot bands
+ * null. Those overlays must then be drawn as absent — never as zero.
+ */
+export interface DailySetup {
+  sessionDate: CalendarDay
+  atmBatch: AtmBatch
+  prevSessionDate: CalendarDay
+  prevClose: number
+  prevHigh: number
+  prevLow: number
+  atmCenter: number
+  otmCeStrike: number
+  otmPeStrike: number
+  otmCeSettle: number | null
+  otmPeSettle: number | null
+  sniperPoint: number | null
+  spotSniperUpper: number | null
+  spotSniperLower: number | null
+  weeklyExpiry: CalendarDay
+}
+
+/** All three batches for one session, keyed by batch. A batch may be missing. */
+export type SessionSetup = Partial<Record<AtmBatch, DailySetup>>

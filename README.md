@@ -126,7 +126,7 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 | 1 — Skeleton + Supabase connection | ✅ Done |
 | 2 — Session selection | ✅ Done |
 | 3 — Main spot chart | ✅ Done |
-| 4 — Overlays + batch toggle | Not started |
+| 4 — Overlays + batch toggle | ✅ Done |
 | 5 — Four leg charts | Not started |
 | 6 — Replay | Not started |
 | 7 — Crosshair sync + zoom/pan | Not started |
@@ -144,4 +144,5 @@ All Supabase reads go through `src/lib/`, not through components:
 | `types.ts` | `*Row` (raw, strings) vs. domain types (numbers), so the coercion boundary is compiler-visible. |
 | `format.ts` | Display formatting. Calendar dates never pass through `new Date()`; instants render in IST. |
 | `calendar.ts` | Calendar-day arithmetic on `'YYYY-MM-DD'` strings, UTC-anchored — never browser-local. |
+| `overlays.ts` | The six overlay lines defined once — colour, style, and where each value comes from. Null means draw nothing, never zero. |
 | `time.ts` | Instants vs. chart times. Lightweight Charts renders in UTC, so values are shifted by IST's fixed +05:30 for display. Read the module comment before touching it. |

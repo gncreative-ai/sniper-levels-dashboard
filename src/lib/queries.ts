@@ -2,6 +2,10 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { requireSupabase } from './supabase'
 import { toNum, toNumOrNull } from './num'
 import type {
+  AtmBatch,
+  DailySetup,
+  DailySetupRow,
+  SessionSetup,
   SessionBounds,
   SessionSummary,
   SpotCandle5m,
@@ -10,6 +14,7 @@ import type {
   SpotCandleDailyRow,
 } from './types'
 import type { CalendarDay } from './calendar'
+import { isAtmBatch } from './types'
 import { toEpochSeconds } from './time'
 
 /**
@@ -197,4 +202,58 @@ export async function fetchSpotCandles5m(sessionDate: CalendarDay): Promise<Spot
   return (data ?? [])
     .map((row) => toSpotCandle5m(row as SpotCandle5mRow))
     .filter((candle): candle is SpotCandle5m => candle !== null)
+}
+
+function toDailySetup(row: DailySetupRow): DailySetup | null {
+  // An unrecognised batch name means the pipeline's vocabulary has changed.
+  // Skip it rather than coercing it into one of the three the UI knows about.
+  if (!isAtmBatch(row.atm_batch)) return null
+
+  return {
+    sessionDate: row.session_date,
+    atmBatch: row.atm_batch,
+    prevSessionDate: row.prev_session_date,
+    prevClose: toNum(row.prev_close, 'prev_close'),
+    prevHigh: toNum(row.prev_high, 'prev_high'),
+    prevLow: toNum(row.prev_low, 'prev_low'),
+    atmCenter: toNum(row.atm_center, 'atm_center'),
+    otmCeStrike: toNum(row.otm_ce_strike, 'otm_ce_strike'),
+    otmPeStrike: toNum(row.otm_pe_strike, 'otm_pe_strike'),
+    // These five are nullable together and stay null — see DailySetup.
+    otmCeSettle: toNumOrNull(row.otm_ce_settle, 'otm_ce_settle'),
+    otmPeSettle: toNumOrNull(row.otm_pe_settle, 'otm_pe_settle'),
+    sniperPoint: toNumOrNull(row.sniper_point, 'sniper_point'),
+    spotSniperUpper: toNumOrNull(row.spot_sniper_upper, 'spot_sniper_upper'),
+    spotSniperLower: toNumOrNull(row.spot_sniper_lower, 'spot_sniper_lower'),
+    weeklyExpiry: row.weekly_expiry,
+  }
+}
+
+/**
+ * All three ATM batches for one session, in a single request.
+ *
+ * Spec §4.3 describes the batch toggle as re-fetching that batch's setup. Three
+ * rows is a trivial payload, so this fetches all of them at once and lets the
+ * toggle switch client-side: one round trip instead of three, and flipping
+ * between batches to compare them stays instant, which is the whole point of
+ * having the toggle.
+ */
+export async function fetchSessionSetup(sessionDate: CalendarDay): Promise<SessionSetup> {
+  const { data, error } = await requireSupabase()
+    .from(TABLES.dailySetup)
+    // One unbroken literal: the client parses this string at the type level, and
+    // splitting it across concatenated pieces defeats that inference.
+    .select('session_date, atm_batch, prev_session_date, prev_close, prev_high, prev_low, atm_center, otm_ce_strike, otm_pe_strike, otm_ce_settle, otm_pe_settle, sniper_point, spot_sniper_upper, spot_sniper_lower, weekly_expiry')
+    .eq('session_date', sessionDate)
+
+  if (error) throw queryError(`Reading ${TABLES.dailySetup} for ${sessionDate}`, error)
+
+  const setup: SessionSetup = {}
+
+  for (const row of data ?? []) {
+    const parsed = toDailySetup(row as DailySetupRow)
+    if (parsed) setup[parsed.atmBatch as AtmBatch] = parsed
+  }
+
+  return setup
 }
