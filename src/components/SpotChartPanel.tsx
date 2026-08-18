@@ -1,34 +1,39 @@
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { SpotChart } from './SpotChart'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './StatusPanels'
-import { useAsync } from '../hooks/useAsync'
+import type { AsyncState } from '../hooks/useAsync'
 import type { CalendarDay } from '../lib/calendar'
 import { formatCount, formatSessionDate } from '../lib/format'
-import { fetchSpotCandles5m } from '../lib/queries'
+import { barsUpTo } from '../lib/replay'
 import { formatIstTime } from '../lib/time'
 import { absentOverlays, resolveOverlays, type OverlayVisibility } from '../lib/overlays'
-import type { DailySetup } from '../lib/types'
+import type { DailySetup, SpotCandle5m } from '../lib/types'
 
 /**
- * Owns fetching the active session's spot bars and the states around them.
+ * Renders the active session's spot chart from a fetch owned by the parent.
  *
- * Re-fetches whenever the active session changes (spec 4.3). The chart itself
- * stays a dumb renderer so phases 4 and 6 can layer overlays and replay onto it
- * without this component growing responsibilities.
+ * The fetch lives one level up (in SessionOverlays) rather than here, because
+ * phase 6 replay needs this same candle array to compute the reveal cutoff
+ * shared with the four leg charts — see lib/replay.ts. Keeping two independent
+ * fetches in sync would be the alternative, and worse.
  */
 export function SpotChartPanel({
   sessionDate,
+  candlesState,
+  reload,
+  cutoff,
   setup,
   visibility,
 }: {
   sessionDate: CalendarDay
+  candlesState: AsyncState<SpotCandle5m[]>
+  reload: () => void
+  cutoff: number
   setup: DailySetup | undefined
   visibility: OverlayVisibility
 }) {
-  const load = useCallback(() => fetchSpotCandles5m(sessionDate), [sessionDate])
-  const { state, reload } = useAsync(load, [sessionDate], { keepPreviousData: true })
-
-  const candles = state.status === 'ready' ? state.data : []
+  const candles = candlesState.status === 'ready' ? candlesState.data : []
+  const visibleCandles = useMemo(() => barsUpTo(candles, cutoff), [candles, cutoff])
   const first = candles[0]
   const last = candles[candles.length - 1]
 
@@ -43,7 +48,7 @@ export function SpotChartPanel({
         <h2 className="font-mono text-sm text-zinc-400">
           Nifty 50 spot · 5&#8209;min · {formatSessionDate(sessionDate)}
         </h2>
-        {state.status === 'ready' && candles.length > 0 && first && last && (
+        {candlesState.status === 'ready' && candles.length > 0 && first && last && (
           <span className="font-mono text-xs text-zinc-600">
             {formatCount(candles.length)} bars · {formatIstTime(first.epochSeconds)}–
             {formatIstTime(last.epochSeconds)} IST
@@ -51,22 +56,22 @@ export function SpotChartPanel({
         )}
       </div>
 
-      {state.status === 'loading' && <LoadingPanel label="Loading 5-minute spot candles…" />}
+      {candlesState.status === 'loading' && <LoadingPanel label="Loading 5-minute spot candles…" />}
 
-      {state.status === 'error' && (
-        <ErrorPanel title="Could not load spot candles" error={state.error} onRetry={reload} />
+      {candlesState.status === 'error' && (
+        <ErrorPanel title="Could not load spot candles" error={candlesState.error} onRetry={reload} />
       )}
 
-      {state.status === 'ready' &&
+      {candlesState.status === 'ready' &&
         (candles.length === 0 ? (
           <EmptyPanel message={`No 5-minute spot candles stored for ${formatSessionDate(sessionDate)}.`} />
         ) : (
           <div
             className={`h-[340px] rounded-md border border-zinc-800 bg-zinc-900/20 p-1 transition-opacity sm:h-[440px] ${
-              state.refreshing ? 'opacity-50' : 'opacity-100'
+              candlesState.refreshing ? 'opacity-50' : 'opacity-100'
             }`}
           >
-            <SpotChart candles={candles} overlays={overlays} />
+            <SpotChart candles={visibleCandles} overlays={overlays} />
           </div>
         ))}
 
@@ -81,7 +86,7 @@ export function SpotChartPanel({
 
       {/* A short session is real data, not a gap — say so rather than letting a
           sparse chart read as broken. The Diwali Muhurat session has 12 bars. */}
-      {state.status === 'ready' && candles.length > 0 && candles.length < 60 && (
+      {candlesState.status === 'ready' && candles.length > 0 && candles.length < 60 && (
         <p className="font-mono text-[11px] text-zinc-500">
           Short session — {formatCount(candles.length)} bars instead of the usual ~75. This is real
           market data, not missing bars.

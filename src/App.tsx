@@ -10,10 +10,12 @@ import { useAsync } from './hooks/useAsync'
 import { addCalendarMonths, clampCalendarDay } from './lib/calendar'
 import type { CalendarDay } from './lib/calendar'
 import { formatCount } from './lib/format'
-import { fetchSessionBounds, fetchSessionSetup, fetchSessionsInRange, TABLES } from './lib/queries'
+import { fetchSessionBounds, fetchSessionSetup, fetchSessionsInRange, fetchSpotCandles5m, TABLES } from './lib/queries'
 import { supabaseProjectRef } from './lib/supabase'
 import type { AtmBatch, SessionBounds } from './lib/types'
 import { DEFAULT_OVERLAY_VISIBILITY, type OverlayId } from './lib/overlays'
+import { useReplay } from './hooks/useReplay'
+import { computeRevealCutoff } from './lib/replay'
 
 /** Sessions shown on first load. The full range stays one click away. */
 const DEFAULT_RANGE_MONTHS = 3
@@ -46,7 +48,7 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 5 — four leg charts. Read-only: this dashboard never writes to Supabase.
+            Phase 6 — replay. Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
@@ -190,11 +192,27 @@ function SessionOverlays({
   visibility: typeof DEFAULT_OVERLAY_VISIBILITY
   onToggleOverlay: (id: OverlayId) => void
 }) {
-  const load = useCallback(() => fetchSessionSetup(sessionDate), [sessionDate])
-  const { state, reload } = useAsync(load, [sessionDate], { keepPreviousData: true })
+  const loadSetup = useCallback(() => fetchSessionSetup(sessionDate), [sessionDate])
+  const { state, reload } = useAsync(loadSetup, [sessionDate], { keepPreviousData: true })
 
   const setup = state.status === 'ready' ? state.data : {}
   const hasAnyBatch = Object.keys(setup).length > 0
+
+  // Fetched here rather than inside SpotChartPanel: replay needs this same
+  // array to compute the cutoff shared with the four leg charts (lib/replay.ts).
+  const loadSpotCandles = useCallback(() => fetchSpotCandles5m(sessionDate), [sessionDate])
+  const { state: spotState, reload: reloadSpot } = useAsync(loadSpotCandles, [sessionDate], {
+    keepPreviousData: true,
+  })
+  const spotCandles = spotState.status === 'ready' ? spotState.data : []
+
+  // Position is tracked in spot-bar units; per spec §4.3 both a session and a
+  // batch change reset replay to bar 0 once it has been engaged.
+  const replay = useReplay(spotCandles.length, `${sessionDate}::${batch}`)
+  const cutoff = useMemo(
+    () => computeRevealCutoff(spotCandles, replay.revealedCount),
+    [spotCandles, replay.revealedCount],
+  )
 
   return (
     <>
@@ -212,6 +230,7 @@ function SessionOverlays({
             onBatchChange={onBatchChange}
             visibility={visibility}
             onVisibilityChange={onToggleOverlay}
+            replay={replay}
           />
         ) : (
           <EmptyPanel message="No setup rows for this session, so there are no overlay levels to draw." />
@@ -220,9 +239,16 @@ function SessionOverlays({
       {/* Deliberately not keyed on the session: remounting would tear down and
           rebuild the chart instance on every selection, losing the zoom and pan
           state that phase 7 builds on. The panel refetches and swaps its data. */}
-      <SpotChartPanel sessionDate={sessionDate} setup={setup[batch]} visibility={visibility} />
+      <SpotChartPanel
+        sessionDate={sessionDate}
+        candlesState={spotState}
+        reload={reloadSpot}
+        cutoff={cutoff}
+        setup={setup[batch]}
+        visibility={visibility}
+      />
 
-      <LegQuadrantPanel setup={setup[batch]} batch={batch} />
+      <LegQuadrantPanel setup={setup[batch]} batch={batch} cutoff={cutoff} />
     </>
   )
 }

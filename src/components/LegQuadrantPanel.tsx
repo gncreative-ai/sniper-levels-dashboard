@@ -3,6 +3,7 @@ import { LegQuadrant } from './LegQuadrant'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './StatusPanels'
 import { useAsync } from '../hooks/useAsync'
 import { buildLegSeries, distinctInstrumentKeys } from '../lib/legs'
+import { revealedTodayBars } from '../lib/replay'
 import { fetchOptionCandles5m, fetchStrikeRefs } from '../lib/queries'
 import { formatSessionDate } from '../lib/format'
 import type { AtmBatch, DailySetup } from '../lib/types'
@@ -19,9 +20,12 @@ import type { AtmBatch, DailySetup } from '../lib/types'
 export function LegQuadrantPanel({
   setup,
   batch,
+  cutoff,
 }: {
   setup: DailySetup | undefined
   batch: AtmBatch
+  /** Reveal cutoff shared with the spot chart — see lib/replay.ts. */
+  cutoff: number
 }) {
   const sessionDate = setup?.sessionDate
   const prevSessionDate = setup?.prevSessionDate
@@ -44,8 +48,14 @@ export function LegQuadrantPanel({
 
   const legs = useMemo(() => {
     if (state.status !== 'ready') return []
-    return buildLegSeries(batch, state.data.refs, state.data.candles, setup)
-  }, [state, batch, setup])
+
+    // Prev-day bars are never subject to replay (spec §4.2) — only today's
+    // portion is truncated to the shared cutoff.
+    return buildLegSeries(batch, state.data.refs, state.data.candles, setup).map((leg) => ({
+      ...leg,
+      todayBars: revealedTodayBars(leg.todayBars, cutoff),
+    }))
+  }, [state, batch, setup, cutoff])
 
   if (!setup) {
     return (
