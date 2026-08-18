@@ -49,7 +49,7 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 | Phase | Status |
 |---|---|
 | 1 — Skeleton + Supabase connection | ✅ Done |
-| 2 — Session selection | Not started |
+| 2 — Session selection | ✅ Done |
 | 3 — Main spot chart | Not started |
 | 4 — Overlays + batch toggle | Not started |
 | 5 — Four leg charts | Not started |
@@ -68,3 +68,4 @@ All Supabase reads go through `src/lib/`, not through components:
 | `num.ts` | The numeric coercion boundary — PostgREST returns `numeric`/`bigint` as strings. Nulls stay null. |
 | `types.ts` | `*Row` (raw, strings) vs. domain types (numbers), so the coercion boundary is compiler-visible. |
 | `format.ts` | Display formatting. Calendar dates never pass through `new Date()`; instants render in IST. |
+| `calendar.ts` | Calendar-day arithmetic on `'YYYY-MM-DD'` strings, UTC-anchored — never browser-local. |

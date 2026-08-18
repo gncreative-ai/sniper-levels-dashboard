@@ -6,22 +6,16 @@
  *   2. Postgres `date` values are calendar days, not instants.
  */
 
+import { calendarDayToUtcNoon, parseCalendarDay } from './calendar'
+import type { CalendarDay } from './calendar'
+
 export const IST_TIME_ZONE = 'Asia/Kolkata'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-/** Split a 'YYYY-MM-DD' calendar day without going through Date. */
-function parseCalendarDay(isoDate: string): { year: number; month: number; day: number } | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate)
-  if (!match) return null
-
-  const [, year, month, day] = match as unknown as [string, string, string, string]
-  return { year: Number(year), month: Number(month), day: Number(day) }
-}
-
 /** '2025-09-01' -> '01 Sep 2025'. Returns the input unchanged if it isn't a plain date. */
-export function formatSessionDate(isoDate: string): string {
+export function formatSessionDate(isoDate: CalendarDay): string {
   const parts = parseCalendarDay(isoDate)
   if (!parts) return isoDate
 
@@ -29,18 +23,35 @@ export function formatSessionDate(isoDate: string): string {
   return `${String(parts.day).padStart(2, '0')} ${month} ${parts.year}`
 }
 
+/** '2025-09-01' -> '01 Sep'. The compact form used on scrubber chips. */
+export function formatSessionDateShort(isoDate: CalendarDay): string {
+  const parts = parseCalendarDay(isoDate)
+  if (!parts) return isoDate
+
+  const month = MONTHS[parts.month - 1] ?? String(parts.month)
+  return `${String(parts.day).padStart(2, '0')} ${month}`
+}
+
+/** '2025-09-01' -> 'Sep 2025'. Used for the scrubber's month group headings. */
+export function formatMonthLabel(isoDate: CalendarDay): string {
+  const parts = parseCalendarDay(isoDate)
+  if (!parts) return isoDate
+
+  const month = MONTHS[parts.month - 1] ?? String(parts.month)
+  return `${month} ${parts.year}`
+}
+
 /**
  * '2025-09-01' -> 'Mon'.
  *
- * Anchored at UTC noon so the weekday is derived from the calendar day itself
- * and cannot slip a day in either direction regardless of the viewer's zone.
+ * Derived from the calendar day itself via a UTC-noon anchor, so it cannot slip
+ * a day in either direction regardless of the viewer's zone.
  */
-export function formatSessionWeekday(isoDate: string): string {
+export function formatSessionWeekday(isoDate: CalendarDay): string {
   const parts = parseCalendarDay(isoDate)
   if (!parts) return ''
 
-  const utcNoon = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12))
-  return WEEKDAYS[utcNoon.getUTCDay()] ?? ''
+  return WEEKDAYS[calendarDayToUtcNoon(parts).getUTCDay()] ?? ''
 }
 
 const istDateTime = new Intl.DateTimeFormat('en-IN', {
