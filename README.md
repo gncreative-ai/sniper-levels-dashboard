@@ -1,2 +1,47 @@
-# sniper-levels-dashboard
-Sniper Theory Backtesting Dashboard for Nifty50
+# Sniper Levels — Backtest Dashboard
+
+A backtesting visualization dashboard for **Sniper Levels**, a Nifty 50 weekly-options strategy. Reads pre-computed historical session data from Supabase and lets you visually inspect and replay past trading sessions, day by day.
+
+**This is a read-only analysis tool.** It does not place trades, generate signals, or write to the database.
+
+---
+
+## Documentation
+
+| File | What's in it |
+|---|---|
+| `docs/SPEC.md` | Full build specification — data schema, dashboard requirements, phased build plan. **Read this first.** |
+| `CLAUDE.md` | Project rules and conventions for Claude Code |
+
+## Stack
+
+- Vite + React + Tailwind CSS
+- TradingView Lightweight Charts
+- Supabase (read-only, direct from browser)
+
+## Data source
+
+Supabase project `qqkbkhzvhuocapcwzfwi`, tables prefixed `sniper_bt_*`. Currently holds **233 completed sessions** spanning Sep 2, 2025 → Aug 11, 2026, populated by a separate n8n pipeline (out of scope for this repo).
+
+Schema details are in `docs/SPEC.md` section 2.
+
+## Setup
+
+```bash
+npm install
+cp .env.example .env    # then fill in your Supabase anon key
+npm run dev
+```
+
+### Environment variables
+
+| Variable | Notes |
+|---|---|
+| `VITE_SUPABASE_URL` | `https://qqkbkhzvhuocapcwzfwi.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | From Supabase Dashboard → Project Settings → API |
+
+The anon key is safe to expose in a browser bundle **only because** every `sniper_bt_*` table has RLS enabled with a read-only `SELECT` policy and no write policies. Do not add write policies to these tables.
+
+## Project status
+
+Data pipeline: complete and validated. Dashboard: in development — see the phased build plan in `docs/SPEC.md` section 5.4.
