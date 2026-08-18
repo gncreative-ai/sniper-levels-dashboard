@@ -4,10 +4,13 @@ import { toNum, toNumOrNull } from './num'
 import type {
   SessionBounds,
   SessionSummary,
+  SpotCandle5m,
+  SpotCandle5mRow,
   SpotCandleDaily,
   SpotCandleDailyRow,
 } from './types'
 import type { CalendarDay } from './calendar'
+import { toEpochSeconds } from './time'
 
 /**
  * The data-access layer. Every Supabase read in this app lives here.
@@ -21,6 +24,7 @@ import type { CalendarDay } from './calendar'
 export const TABLES = {
   spotCandlesDaily: 'sniper_bt_spot_candles_daily',
   dailySetup: 'sniper_bt_daily_setup',
+  spotCandles5m: 'sniper_bt_spot_candles_5m',
 } as const
 
 /**
@@ -150,4 +154,47 @@ export async function fetchSessionsInRange(
     const candle = toSpotCandleDaily(row as SpotCandleDailyRow)
     return { ...candle, hasSetup: datesWithSetup.has(candle.candleDate) }
   })
+}
+
+function toSpotCandle5m(row: SpotCandle5mRow): SpotCandle5m | null {
+  const epochSeconds = toEpochSeconds(row.candle_timestamp)
+
+  // A bar with an unparseable timestamp cannot be placed on a time axis. Drop
+  // it rather than charting it at a wrong position — a missing bar is visible,
+  // a misplaced one is not.
+  if (epochSeconds === null) return null
+
+  return {
+    epochSeconds,
+    open: toNum(row.open, 'open'),
+    high: toNum(row.high, 'high'),
+    low: toNum(row.low, 'low'),
+    close: toNum(row.close, 'close'),
+    volume: toNumOrNull(row.volume, 'volume'),
+  }
+}
+
+/**
+ * The active session's 5-minute spot bars, oldest first.
+ *
+ * Filtered on candle_date rather than a timestamp range: the column is indexed,
+ * and it sidesteps having to express an IST session window (09:15–15:25) as a
+ * UTC half-open interval at the query layer.
+ *
+ * A normal session is ~75 bars. Some are legitimately much shorter — the Diwali
+ * Muhurat session on 2025-10-21 has 12 — so callers must not treat a short
+ * series as an error.
+ */
+export async function fetchSpotCandles5m(sessionDate: CalendarDay): Promise<SpotCandle5m[]> {
+  const { data, error } = await requireSupabase()
+    .from(TABLES.spotCandles5m)
+    .select('candle_timestamp, open, high, low, close, volume')
+    .eq('candle_date', sessionDate)
+    .order('candle_timestamp', { ascending: true })
+
+  if (error) throw queryError(`Reading ${TABLES.spotCandles5m} for ${sessionDate}`, error)
+
+  return (data ?? [])
+    .map((row) => toSpotCandle5m(row as SpotCandle5mRow))
+    .filter((candle): candle is SpotCandle5m => candle !== null)
 }
