@@ -16,6 +16,8 @@ import type { AtmBatch, SessionBounds } from './lib/types'
 import { DEFAULT_OVERLAY_VISIBILITY, type OverlayId } from './lib/overlays'
 import { useReplay } from './hooks/useReplay'
 import { computeRevealCutoff } from './lib/replay'
+import { createChartSyncGroup } from './lib/chartSync'
+import { ChartSyncContext } from './contexts/ChartSyncContext'
 
 /** Sessions shown on first load. The full range stays one click away. */
 const DEFAULT_RANGE_MONTHS = 3
@@ -48,7 +50,7 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 6 — replay. Read-only: this dashboard never writes to Supabase.
+            Phase 7 — crosshair sync + zoom/pan bounds. Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
@@ -214,8 +216,15 @@ function SessionOverlays({
     [spotCandles, replay.revealedCount],
   )
 
+  // One sync group per session view (spec §4.5) — created once and shared by
+  // the spot chart and all four leg charts via context, not per session or
+  // batch: the underlying chart instances persist across those changes (see
+  // the comment below on why SpotChartPanel isn't keyed), so the group must
+  // too, or switching sessions would silently drop synchronisation.
+  const chartSync = useMemo(() => createChartSyncGroup(), [])
+
   return (
-    <>
+    <ChartSyncContext.Provider value={chartSync}>
       {state.status === 'loading' && <LoadingPanel label="Loading session setup…" />}
 
       {state.status === 'error' && (
@@ -249,7 +258,7 @@ function SessionOverlays({
       />
 
       <LegQuadrantPanel setup={setup[batch]} batch={batch} cutoff={cutoff} />
-    </>
+    </ChartSyncContext.Provider>
   )
 }
 
