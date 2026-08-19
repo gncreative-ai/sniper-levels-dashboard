@@ -71,7 +71,7 @@ export function SpotChartPanel({
               candlesState.refreshing ? 'opacity-50' : 'opacity-100'
             }`}
           >
-            <SpotChart candles={visibleCandles} overlays={overlays} />
+            <SpotChart candles={visibleCandles} overlays={overlays} sessionDate={sessionDate} />
           </div>
         ))}
 

@@ -130,7 +130,7 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 | 5 — Four leg charts | ✅ Done |
 | 6 — Replay | ✅ Done |
 | 7 — Crosshair sync + zoom/pan | ✅ Done |
-| 8 — Draw tools | Not started |
+| 8 — Draw tools | ✅ Done |
 
 ### Data access layer
 
@@ -150,3 +150,5 @@ All Supabase reads go through `src/lib/`, not through components:
 | `chartTheme.ts` | Shared chart appearance and the overlay autoscale provider, so all five charts stay one panel. |
 | `overlays.ts` | The six overlay lines defined once — colour, style, and where each value comes from. Null means draw nothing, never zero. |
 | `time.ts` | Instants vs. chart times. Lightweight Charts renders in UTC, so values are shifted by IST's fixed +05:30 for display. Read the module comment before touching it. |
+| `drawings.ts` | Draw-tool types and pure geometry — segment/ray/rectangle distance, fib level pricing. No chart or React dependency, so it's the unit-testable core of Phase 8. |
+| `drawingPrimitive.ts` | `DrawingsPrimitive` — renders drawings into a chart's own canvas via the Series Primitives API, and answers hit-tests for click-to-select. One instance per chart. |

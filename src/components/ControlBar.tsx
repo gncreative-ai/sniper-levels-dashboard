@@ -1,12 +1,14 @@
 import type { Replay } from '../hooks/useReplay'
 import { OVERLAY_DEFINITIONS, type OverlayId, type OverlayVisibility } from '../lib/overlays'
 import { ReplayControls } from './ReplayControls'
+import { DrawToolbar } from './DrawToolbar'
+import type { ActiveDrawingTool } from '../contexts/DrawingToolContext'
 import { ATM_BATCHES, ATM_BATCH_LABELS, type AtmBatch, type SessionSetup } from '../lib/types'
 import { formatPrice } from '../lib/format'
 
 /**
  * The control row from spec §4.1, all in one row: ATM batch toggle, the six
- * overlay switches, and replay controls.
+ * overlay switches, replay controls, and (spec §4.5) the draw-tool picker.
  *
  * Overlay toggles are pure client-side visibility and never trigger a fetch
  * (spec §4.3). The batch toggle does not fetch either — all three batches
@@ -19,6 +21,8 @@ export function ControlBar({
   visibility,
   onVisibilityChange,
   replay,
+  activeDrawingTool,
+  onSelectDrawingTool,
 }: {
   setup: SessionSetup
   batch: AtmBatch
@@ -26,6 +30,8 @@ export function ControlBar({
   visibility: OverlayVisibility
   onVisibilityChange: (id: OverlayId) => void
   replay: Replay
+  activeDrawingTool: ActiveDrawingTool
+  onSelectDrawingTool: (tool: ActiveDrawingTool) => void
 }) {
   const active = setup[batch]
 
@@ -119,6 +125,8 @@ export function ControlBar({
         </div>
 
         <ReplayControls replay={replay} />
+
+        <DrawToolbar activeTool={activeDrawingTool} onSelectTool={onSelectDrawingTool} />
       </div>
 
       {active && <BatchSummary batch={batch} setup={setup} />}

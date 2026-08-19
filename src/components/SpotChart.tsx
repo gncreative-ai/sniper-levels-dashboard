@@ -8,10 +8,12 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts'
+import type { CalendarDay } from '../lib/calendar'
 import type { SpotCandle5m } from '../lib/types'
 import type { ResolvedOverlay } from '../lib/overlays'
 import { toChartTime } from '../lib/time'
 import { useChartSync } from '../hooks/useChartSync'
+import { useDrawingTools } from '../hooks/useDrawingTools'
 import {
   CANDLE_SERIES_OPTIONS,
   LINE_STYLES,
@@ -25,14 +27,23 @@ import {
  *
  * Cross-chart crosshair sync (spec §4.5) is registered via useChartSync — see
  * that module for why each chart supplies its own price at a given time
- * rather than the hovered chart's price being forwarded directly.
+ * rather than the hovered chart's price being forwarded directly. Draw tools
+ * (spec §4.5, phase 8) are registered via useDrawingTools.
  */
 export function SpotChart({
   candles,
   overlays,
+  sessionDate,
 }: {
   candles: SpotCandle5m[]
   overlays: ResolvedOverlay[]
+  /**
+   * Drawings reset when this changes. The spot chart's own data does not
+   * change with the ATM batch (spec §4.3), so unlike LegChart this is the
+   * session alone — a trend line drawn here stays valid across a batch
+   * switch, since nothing about this chart's scale or bars changed.
+   */
+  sessionDate: CalendarDay
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -125,6 +136,7 @@ export function SpotChart({
   // declaration order, so chartRef/seriesRef are already populated by the time
   // this one registers with the sync group.
   useChartSync(chartRef, seriesRef, data)
+  useDrawingTools(chartRef, seriesRef, sessionDate)
 
   return <div ref={containerRef} className="h-full w-full" />
 }
