@@ -18,6 +18,7 @@ import { useReplay } from './hooks/useReplay'
 import { computeRevealCutoff } from './lib/replay'
 import { createChartSyncGroup } from './lib/chartSync'
 import { ChartSyncContext } from './contexts/ChartSyncContext'
+import { DrawingToolContext, type ActiveDrawingTool } from './contexts/DrawingToolContext'
 
 /** Sessions shown on first load. The full range stays one click away. */
 const DEFAULT_RANGE_MONTHS = 3
@@ -50,7 +51,7 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 7 — crosshair sync + zoom/pan bounds. Read-only: this dashboard never writes to Supabase.
+            Phase 8 — draw tools. Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
@@ -83,6 +84,13 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
   // session changes rather than resetting every time the scrubber moves.
   const [batch, setBatch] = useState<AtmBatch>('nearest')
   const [visibility, setVisibility] = useState(DEFAULT_OVERLAY_VISIBILITY)
+
+  // Which draw tool is armed (spec §4.5) — one shared toolbar for all five
+  // charts, so this lives at the same level as batch/visibility rather than
+  // per-chart. Not reset on session/batch change: unlike the drawings
+  // themselves (cleared per-chart in useDrawingTools), staying on "Trend
+  // Line" while you browse sessions is the useful default, not a surprise.
+  const [activeDrawingTool, setActiveDrawingTool] = useState<ActiveDrawingTool>('none')
 
   const toggleOverlay = useCallback((id: OverlayId) => {
     setVisibility((current) => ({ ...current, [id]: !current[id] }))
@@ -166,6 +174,8 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
             onBatchChange={setBatch}
             visibility={visibility}
             onToggleOverlay={toggleOverlay}
+            activeDrawingTool={activeDrawingTool}
+            onSelectDrawingTool={setActiveDrawingTool}
           />
         </>
       )}
@@ -187,12 +197,16 @@ function SessionOverlays({
   onBatchChange,
   visibility,
   onToggleOverlay,
+  activeDrawingTool,
+  onSelectDrawingTool,
 }: {
   sessionDate: CalendarDay
   batch: AtmBatch
   onBatchChange: (batch: AtmBatch) => void
   visibility: typeof DEFAULT_OVERLAY_VISIBILITY
   onToggleOverlay: (id: OverlayId) => void
+  activeDrawingTool: ActiveDrawingTool
+  onSelectDrawingTool: (tool: ActiveDrawingTool) => void
 }) {
   const loadSetup = useCallback(() => fetchSessionSetup(sessionDate), [sessionDate])
   const { state, reload } = useAsync(loadSetup, [sessionDate], { keepPreviousData: true })
@@ -223,8 +237,17 @@ function SessionOverlays({
   // too, or switching sessions would silently drop synchronisation.
   const chartSync = useMemo(() => createChartSyncGroup(), [])
 
+  // Passed as a stable-shaped object per render; consumers read it via
+  // context rather than each needing activeTool/onSelectDrawingTool threaded
+  // through as two separate props.
+  const drawingToolState = useMemo(
+    () => ({ activeTool: activeDrawingTool, setActiveTool: onSelectDrawingTool }),
+    [activeDrawingTool, onSelectDrawingTool],
+  )
+
   return (
     <ChartSyncContext.Provider value={chartSync}>
+    <DrawingToolContext.Provider value={drawingToolState}>
       {state.status === 'loading' && <LoadingPanel label="Loading session setup…" />}
 
       {state.status === 'error' && (
@@ -240,6 +263,8 @@ function SessionOverlays({
             visibility={visibility}
             onVisibilityChange={onToggleOverlay}
             replay={replay}
+            activeDrawingTool={activeDrawingTool}
+            onSelectDrawingTool={onSelectDrawingTool}
           />
         ) : (
           <EmptyPanel message="No setup rows for this session, so there are no overlay levels to draw." />
@@ -258,6 +283,7 @@ function SessionOverlays({
       />
 
       <LegQuadrantPanel setup={setup[batch]} batch={batch} cutoff={cutoff} />
+    </DrawingToolContext.Provider>
     </ChartSyncContext.Provider>
   )
 }
