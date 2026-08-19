@@ -6,23 +6,33 @@ const TOOL_GLYPH: Record<DrawingTool, string> = {
   ray: '→',
   rectangle: '▭',
   fib: '𝑓',
+  priceRange: '↕',
+  dateRange: '↔',
 }
 
 /**
  * Draw-tool picker (spec §4.5): one shared toolbar arms a tool for all five
  * charts at once — click the tool, then click a chart to start placing it.
  *
- * "Cursor" is the default (none) state: normal pan/zoom/crosshair, and click
- * an existing drawing to select it for deletion. Escape cancels a half-placed
- * drawing or clears the selection; Delete/Backspace removes the selection —
- * both handled per-chart in useDrawingTools, not here.
+ * "Cursor" is the default (none) state: normal pan/zoom/crosshair, click an
+ * existing drawing to select it, then drag its body to move it or one of its
+ * handles to reshape it. Escape cancels a half-placed drawing or clears the
+ * selection; Delete/Backspace removes the selection — all handled per-chart in
+ * useDrawingTools, not here.
+ *
+ * "Magnet" is a separate toggle rather than a tool, because it modifies
+ * whichever tool is armed instead of replacing it.
  */
 export function DrawToolbar({
   activeTool,
   onSelectTool,
+  magnet,
+  onToggleMagnet,
 }: {
   activeTool: ActiveDrawingTool
   onSelectTool: (tool: ActiveDrawingTool) => void
+  magnet: boolean
+  onToggleMagnet: () => void
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -43,6 +53,28 @@ export function DrawToolbar({
             onClick={() => onSelectTool(tool)}
           />
         ))}
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={magnet}
+          title={
+            magnet
+              ? 'Magnet on — points snap to the nearest bar’s open/high/low/close'
+              : 'Magnet off — points land wherever you click'
+          }
+          onClick={onToggleMagnet}
+          className={`ml-1 flex h-7 items-center gap-1.5 rounded border px-2 font-mono text-xs transition ${
+            magnet
+              ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
+              : 'border-zinc-700 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400'
+          }`}
+        >
+          <span aria-hidden="true" className="text-sm leading-none">
+            🧲
+          </span>
+          <span className="hidden sm:inline">Magnet</span>
+        </button>
       </div>
     </div>
   )

@@ -51,7 +51,8 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 8 — draw tools. Read-only: this dashboard never writes to Supabase.
+            Phase 8 — draw tools with magnet snap, measurement tools, and drag-to-edit.
+            Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
@@ -91,6 +92,11 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
   // themselves (cleared per-chart in useDrawingTools), staying on "Trend
   // Line" while you browse sessions is the useful default, not a surprise.
   const [activeDrawingTool, setActiveDrawingTool] = useState<ActiveDrawingTool>('none')
+
+  // Magnet snapping, same lifetime and reasoning as the armed tool: it is a
+  // way of working, not a property of the session being looked at.
+  const [magnet, setMagnet] = useState(false)
+  const toggleMagnet = useCallback(() => setMagnet((on) => !on), [])
 
   const toggleOverlay = useCallback((id: OverlayId) => {
     setVisibility((current) => ({ ...current, [id]: !current[id] }))
@@ -176,6 +182,8 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
             onToggleOverlay={toggleOverlay}
             activeDrawingTool={activeDrawingTool}
             onSelectDrawingTool={setActiveDrawingTool}
+            magnet={magnet}
+            onToggleMagnet={toggleMagnet}
           />
         </>
       )}
@@ -199,6 +207,8 @@ function SessionOverlays({
   onToggleOverlay,
   activeDrawingTool,
   onSelectDrawingTool,
+  magnet,
+  onToggleMagnet,
 }: {
   sessionDate: CalendarDay
   batch: AtmBatch
@@ -207,6 +217,8 @@ function SessionOverlays({
   onToggleOverlay: (id: OverlayId) => void
   activeDrawingTool: ActiveDrawingTool
   onSelectDrawingTool: (tool: ActiveDrawingTool) => void
+  magnet: boolean
+  onToggleMagnet: () => void
 }) {
   const loadSetup = useCallback(() => fetchSessionSetup(sessionDate), [sessionDate])
   const { state, reload } = useAsync(loadSetup, [sessionDate], { keepPreviousData: true })
@@ -241,8 +253,13 @@ function SessionOverlays({
   // context rather than each needing activeTool/onSelectDrawingTool threaded
   // through as two separate props.
   const drawingToolState = useMemo(
-    () => ({ activeTool: activeDrawingTool, setActiveTool: onSelectDrawingTool }),
-    [activeDrawingTool, onSelectDrawingTool],
+    () => ({
+      activeTool: activeDrawingTool,
+      setActiveTool: onSelectDrawingTool,
+      magnet,
+      setMagnet: () => onToggleMagnet(),
+    }),
+    [activeDrawingTool, onSelectDrawingTool, magnet, onToggleMagnet],
   )
 
   return (
@@ -265,6 +282,8 @@ function SessionOverlays({
             replay={replay}
             activeDrawingTool={activeDrawingTool}
             onSelectDrawingTool={onSelectDrawingTool}
+            magnet={magnet}
+            onToggleMagnet={onToggleMagnet}
           />
         ) : (
           <EmptyPanel message="No setup rows for this session, so there are no overlay levels to draw." />

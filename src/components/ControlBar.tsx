@@ -23,6 +23,8 @@ export function ControlBar({
   replay,
   activeDrawingTool,
   onSelectDrawingTool,
+  magnet,
+  onToggleMagnet,
 }: {
   setup: SessionSetup
   batch: AtmBatch
@@ -32,6 +34,8 @@ export function ControlBar({
   replay: Replay
   activeDrawingTool: ActiveDrawingTool
   onSelectDrawingTool: (tool: ActiveDrawingTool) => void
+  magnet: boolean
+  onToggleMagnet: () => void
 }) {
   const active = setup[batch]
 
@@ -126,7 +130,12 @@ export function ControlBar({
 
         <ReplayControls replay={replay} />
 
-        <DrawToolbar activeTool={activeDrawingTool} onSelectTool={onSelectDrawingTool} />
+        <DrawToolbar
+          activeTool={activeDrawingTool}
+          onSelectTool={onSelectDrawingTool}
+          magnet={magnet}
+          onToggleMagnet={onToggleMagnet}
+        />
       </div>
 
       {active && <BatchSummary batch={batch} setup={setup} />}

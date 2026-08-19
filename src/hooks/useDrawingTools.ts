@@ -8,26 +8,37 @@ import type {
 } from 'lightweight-charts'
 import { DrawingToolContext } from '../contexts/DrawingToolContext'
 import { DrawingsPrimitive, type PendingDrawing } from '../lib/drawingPrimitive'
-import { TOOL_POINT_COUNT, makeDrawingId, type Drawing, type Point } from '../lib/drawings'
+import {
+  TOOL_POINT_COUNT,
+  makeDrawingId,
+  snapToBar,
+  type Bar,
+  type Drawing,
+  type Point,
+} from '../lib/drawings'
 
 /**
  * Wires one chart into the drawing-tools system (spec §4.5): attaches its
  * DrawingsPrimitive, keeps that primitive's state in sync with React state,
- * and turns chart clicks into create / select / delete actions.
+ * and turns pointer input into create / select / move / reshape / delete.
  *
- * Interaction model is click-click, not click-drag: a tool needing two points
- * places the first on click one, previews live to the cursor via
- * subscribeCrosshairMove, and commits on click two. This reuses the exact two
- * event APIs Phase 7's crosshair sync already proved out, and — more
- * importantly — sidesteps a real conflict click-drag would have created: a
- * mousedown-drag gesture on the chart is also how the chart pans natively, so
- * a drag-to-draw gesture would fight the chart's own interaction.
+ * Two different input mechanisms, for two different reasons:
+ *
+ * - Placing a new drawing uses the chart's own subscribeClick /
+ *   subscribeCrosshairMove — click-click, not click-drag. That sidesteps a real
+ *   conflict, since a mousedown-drag on the chart is also how the chart pans
+ *   natively, and it reuses the two event APIs phase 7's crosshair sync proved.
+ * - Moving or reshaping an existing drawing genuinely needs a drag, so it uses
+ *   DOM mousedown/mousemove/mouseup and suppresses the chart's own pan for the
+ *   duration (handleScroll/handleScale off, restored on release). Pane
+ *   coordinates come from the chart element's bounding rect, which is verified
+ *   to share its origin with the pane canvas.
  *
  * `resetKey` clears drawings when the underlying chart's data stops matching
  * them — same reasoning and same pattern as useReplay's resetKey. The caller
- * decides what invalidates a drawing: SpotChart's data doesn't change with
- * the ATM batch, so its key is the session alone; a leg's contract does
- * change with the batch, so LegChart's key includes it too.
+ * decides what invalidates a drawing: SpotChart's data doesn't change with the
+ * ATM batch, so its key is the session alone; a leg's contract does change with
+ * the batch, so LegChart's key includes it too.
  *
  * Call this once per chart, in the component body, AFTER the effect that
  * creates the chart and series — same ordering requirement as useChartSync.
@@ -35,10 +46,12 @@ import { TOOL_POINT_COUNT, makeDrawingId, type Drawing, type Point } from '../li
 export function useDrawingTools(
   chartRef: RefObject<IChartApi | null>,
   seriesRef: RefObject<ISeriesApi<'Candlestick'> | null>,
+  bars: readonly Bar[],
   resetKey: string,
 ) {
   const toolState = useContext(DrawingToolContext)
   const activeTool = toolState?.activeTool ?? 'none'
+  const magnet = toolState?.magnet ?? false
 
   const primitiveRef = useRef<DrawingsPrimitive | null>(null)
   const [drawings, setDrawings] = useState<Drawing[]>([])
@@ -58,6 +71,34 @@ export function useDrawingTools(
   useEffect(() => {
     selectedIdRef.current = selectedId
   }, [selectedId])
+
+  // Read at event time rather than resubscribing every time the data or the
+  // magnet toggle changes.
+  const barsRef = useRef(bars)
+  useEffect(() => {
+    barsRef.current = bars
+  }, [bars])
+
+  const magnetRef = useRef(magnet)
+  useEffect(() => {
+    magnetRef.current = magnet
+  }, [magnet])
+
+  // Read by the drag handlers so the drag effect does NOT have to depend on
+  // `drawings`. It used to, and that was a real bug: a drag calls setDrawings
+  // on every mousemove, which changed the dependency, which tore the effect
+  // down and re-ran it — and its cleanup clears dragRef, so the drag died
+  // after the very first mouse movement and the drawing stopped following the
+  // pointer. Mirroring the array keeps the subscription stable for the whole
+  // gesture.
+  const drawingsRef = useRef(drawings)
+  useEffect(() => {
+    drawingsRef.current = drawings
+  }, [drawings])
+
+  const dragRef = useRef<DragState | null>(null)
+  /** A drag ends in a click event too; that click must not re-run selection. */
+  const suppressClickRef = useRef(false)
 
   // The chart data this drawing set was anchored to no longer matches —
   // see the module comment on why this differs between spot and leg charts.
@@ -145,6 +186,7 @@ export function useDrawingTools(
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  // --- Placement: the chart's own click / crosshair events ---
   useEffect(() => {
     const chart = chartRef.current
     const series = seriesRef.current
@@ -154,10 +196,17 @@ export function useDrawingTools(
       if (param.time === undefined || !param.point) return null
       const price = series!.coordinateToPrice(param.point.y)
       if (price === null) return null
-      return { time: param.time as UTCTimestamp, price }
+
+      const raw = { time: param.time as UTCTimestamp, price }
+      return magnetRef.current ? snapToBar(barsRef.current, raw) : raw
     }
 
     function handleClick(param: MouseEventParams<Time>) {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false
+        return
+      }
+
       if (activeTool === 'none') {
         // Hit-tested directly against the primitive rather than trusting
         // param.hoveredInfo to have propagated a series-primitive hit through
@@ -202,5 +251,169 @@ export function useDrawingTools(
     }
   }, [chartRef, seriesRef, activeTool])
 
+  // --- Editing: drag a whole drawing, or one of its anchor handles ---
+  useEffect(() => {
+    const chart = chartRef.current
+    const series = seriesRef.current
+    if (!chart || !series) return
+
+    const element = chart.chartElement()
+
+    /** Pane coordinates for a pointer event. Verified: the chart element's
+     *  bounding-rect origin is the pane canvas origin, so no axis offset. */
+    function toPane(event: MouseEvent): { x: number; y: number } {
+      const rect = element.getBoundingClientRect()
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    }
+
+    /** A pane pixel back to an anchor, with magnet applied when it's on. */
+    function toAnchor(x: number, y: number): Point | null {
+      const time = chart!.timeScale().coordinateToTime(x)
+      const price = series!.coordinateToPrice(y)
+      if (time === null || price === null) return null
+
+      const raw = { time: time as UTCTimestamp, price }
+      return magnetRef.current ? snapToBar(barsRef.current, raw) : raw
+    }
+
+    function onMouseDown(event: MouseEvent) {
+      // Clear the suppression flag at the START of every new gesture, rather
+      // than relying on a click arriving to consume it. Lightweight Charts
+      // does not emit a click after a drag that actually moved, so a flag set
+      // on mouseup could otherwise survive indefinitely and swallow the next
+      // genuine click — which showed up as the tool after a drag silently
+      // losing its first placement click and never committing a drawing.
+      suppressClickRef.current = false
+
+      // Placement owns the pointer while a tool is armed; only the cursor
+      // tool edits existing drawings.
+      if (event.button !== 0 || activeTool !== 'none') return
+
+      const primitive = primitiveRef.current
+      if (!primitive) return
+
+      const { x, y } = toPane(event)
+
+      // A handle beats the body: grabbing an endpoint reshapes, grabbing
+      // anywhere else on the same drawing moves the whole thing.
+      const handle = primitive.hitTestHandle(x, y)
+      const body = handle ? null : primitive.hitTest(x, y)
+
+      const id = handle?.id ?? (typeof body?.externalId === 'string' ? body.externalId : null)
+      if (id === null) return
+
+      const drawing = drawingsRef.current.find((d) => d.id === id)
+      if (!drawing) return
+
+      const startPixels = drawing.points.map((p) => primitive.toPixel(p))
+      if (startPixels.some((p) => p === null)) return
+
+      dragRef.current = {
+        id,
+        handleIndex: handle ? handle.index : null,
+        startPoints: drawing.points,
+        startPixels: startPixels as { x: number; y: number }[],
+        originX: x,
+        originY: y,
+        moved: false,
+      }
+
+      setSelectedId(id)
+
+      // Suppress the chart's own pan for the duration of the drag. Registered
+      // in the capture phase so this runs before Lightweight Charts' own
+      // mousedown handler reads the option.
+      chart!.applyOptions({ handleScroll: false, handleScale: false })
+    }
+
+    function onMouseMove(event: MouseEvent) {
+      const drag = dragRef.current
+      if (!drag) return
+
+      const { x, y } = toPane(event)
+      drag.moved = true
+
+      const next =
+        drag.handleIndex === null
+          ? moveWhole(drag, x, y, toAnchor)
+          : reshape(drag, x, y, toAnchor)
+
+      // A drag past the edge of the pane has no valid anchor; hold the last
+      // good geometry rather than collapsing the drawing.
+      if (!next) return
+
+      setDrawings((list) => list.map((d) => (d.id === drag.id ? { ...d, points: next } : d)))
+    }
+
+    function onMouseUp() {
+      const drag = dragRef.current
+      if (!drag) return
+
+      suppressClickRef.current = drag.moved
+      dragRef.current = null
+      chart!.applyOptions({ handleScroll: true, handleScale: true })
+    }
+
+    element.addEventListener('mousedown', onMouseDown, true)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+
+    return () => {
+      element.removeEventListener('mousedown', onMouseDown, true)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      // Only restore scrolling if a drag actually left it disabled AND the
+      // chart still exists; on unmount the chart is being removed anyway.
+      dragRef.current = null
+    }
+    // Deliberately NOT depending on `drawings` — see drawingsRef above.
+  }, [chartRef, seriesRef, activeTool])
+
   return { drawingCount: drawings.length, hasSelection: selectedId !== null }
+}
+
+interface DragState {
+  id: string
+  /** null when dragging the whole drawing rather than one anchor. */
+  handleIndex: number | null
+  startPoints: Point[]
+  startPixels: { x: number; y: number }[]
+  originX: number
+  originY: number
+  moved: boolean
+}
+
+type ToAnchor = (x: number, y: number) => Point | null
+
+/**
+ * Translate every anchor by the pointer's pixel delta.
+ *
+ * Done in pixel space and converted back per point, rather than by adding a
+ * time delta to each timestamp. The time axis is not linear here — the leg
+ * charts concatenate the previous session onto today, so there is an overnight
+ * gap in the middle — and shifting by wall-clock time would stretch a drawing
+ * that straddles it. A pixel delta moves what the user actually sees.
+ */
+function moveWhole(drag: DragState, x: number, y: number, toAnchor: ToAnchor): Point[] | null {
+  const dx = x - drag.originX
+  const dy = y - drag.originY
+
+  const moved: Point[] = []
+  for (const pixel of drag.startPixels) {
+    const point = toAnchor(pixel.x + dx, pixel.y + dy)
+    if (!point) return null
+    moved.push(point)
+  }
+
+  return moved
+}
+
+/** Move the grabbed anchor only, leaving the others where they are. */
+function reshape(drag: DragState, x: number, y: number, toAnchor: ToAnchor): Point[] | null {
+  const point = toAnchor(x, y)
+  if (!point) return null
+
+  return drag.startPoints.map((original, index) =>
+    index === drag.handleIndex ? point : original,
+  )
 }
