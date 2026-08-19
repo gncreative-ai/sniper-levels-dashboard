@@ -132,6 +132,12 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 | 7 — Crosshair sync + zoom/pan | ✅ Done |
 | 8 — Draw tools | ✅ Done |
 
+Draw tools cover trend line, horizontal ray, rectangle, fib retracement, and the
+two measurement tools (price range, date range), on all five charts. A drawing
+can be selected, dragged to move, reshaped by its anchor handles, and deleted.
+Magnet snapping is a toolbar toggle. Still deliberately out of scope: persistence
+across a reload, undo/redo, and per-drawing style options.
+
 ### Data access layer
 
 All Supabase reads go through `src/lib/`, not through components:
@@ -150,5 +156,5 @@ All Supabase reads go through `src/lib/`, not through components:
 | `chartTheme.ts` | Shared chart appearance and the overlay autoscale provider, so all five charts stay one panel. |
 | `overlays.ts` | The six overlay lines defined once — colour, style, and where each value comes from. Null means draw nothing, never zero. |
 | `time.ts` | Instants vs. chart times. Lightweight Charts renders in UTC, so values are shifted by IST's fixed +05:30 for display. Read the module comment before touching it. |
-| `drawings.ts` | Draw-tool types and pure geometry — segment/ray/rectangle distance, fib level pricing. No chart or React dependency, so it's the unit-testable core of Phase 8. |
-| `drawingPrimitive.ts` | `DrawingsPrimitive` — renders drawings into a chart's own canvas via the Series Primitives API, and answers hit-tests for click-to-select. One instance per chart. |
+| `drawings.ts` | Draw-tool types and pure geometry — segment/ray/rectangle distance, fib level pricing, magnet snapping, and measurement formatting. No chart or React dependency, so it's the unit-testable core of Phase 8. |
+| `drawingPrimitive.ts` | `DrawingsPrimitive` — renders drawings into a chart's own canvas via the Series Primitives API, and answers hit-tests for click-to-select and drag-to-edit. One instance per chart. |

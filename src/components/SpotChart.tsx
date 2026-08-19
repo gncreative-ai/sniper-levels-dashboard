@@ -136,7 +136,9 @@ export function SpotChart({
   // declaration order, so chartRef/seriesRef are already populated by the time
   // this one registers with the sync group.
   useChartSync(chartRef, seriesRef, data)
-  useDrawingTools(chartRef, seriesRef, sessionDate)
+  // `data` doubles as the magnet's snap source — the same array the series is
+  // drawn from, so a snapped point lands on a candle that is actually visible.
+  useDrawingTools(chartRef, seriesRef, data, sessionDate)
 
   return <div ref={containerRef} className="h-full w-full" />
 }

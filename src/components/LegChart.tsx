@@ -183,7 +183,7 @@ export function LegChart({ leg }: { leg: LegSeries }) {
   // Unlike SpotChart, the batch is part of the key: switching batches swaps
   // which contract this chart shows, so a drawing anchored to the old
   // contract's premium scale would land somewhere meaningless on the new one.
-  useDrawingTools(chartRef, seriesRef, `${leg.ref.sessionDate}::${leg.ref.atmBatch}`)
+  useDrawingTools(chartRef, seriesRef, data, `${leg.ref.sessionDate}::${leg.ref.atmBatch}`)
 
   return (
     <div className="relative h-full w-full">

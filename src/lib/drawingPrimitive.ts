@@ -18,6 +18,8 @@ import {
   distanceToRectEdge,
   distanceToSegment,
   fibLevelPrice,
+  formatBarSpan,
+  formatPriceDelta,
   isInsideRect,
   type Drawing,
   type DrawingTool,
@@ -26,7 +28,8 @@ import {
 
 /**
  * Renders drawings (spec §4.5) directly into a chart's own canvas stack via
- * the Series Primitives API, and answers hit-tests for click-to-select.
+ * the Series Primitives API, and answers hit-tests for click-to-select and
+ * drag-to-edit.
  *
  * One instance per chart, attached to that chart's candlestick series. Drawing
  * points are stored in (time, price) — converting to pixels happens here, on
@@ -42,15 +45,33 @@ import {
 
 const HIT_TOLERANCE_PX = 6
 
+/** Anchor handles are grabbed more easily than they are drawn, deliberately. */
+export const HANDLE_RADIUS_PX = 3.5
+const HANDLE_GRAB_PX = 8
+
 const STYLE: Record<DrawingTool, { stroke: string; fill: string }> = {
   trendline: { stroke: '#38bdf8', fill: 'transparent' },
   ray: { stroke: '#38bdf8', fill: 'transparent' },
   rectangle: { stroke: '#a78bfa', fill: 'rgba(167, 139, 250, 0.12)' },
   fib: { stroke: '#f472b6', fill: 'transparent' },
+  // Measurement tools are recoloured by direction at draw time (see
+  // measurementColors) — these are the neutral fallbacks.
+  priceRange: { stroke: '#34d399', fill: 'rgba(52, 211, 153, 0.12)' },
+  dateRange: { stroke: '#60a5fa', fill: 'rgba(96, 165, 250, 0.12)' },
+}
+
+const UP = { stroke: '#34d399', fill: 'rgba(52, 211, 153, 0.14)' }
+const DOWN = { stroke: '#f87171', fill: 'rgba(248, 113, 113, 0.14)' }
+
+/** Price range reads green when the move is up and red when it is down, like TradingView. */
+function measurementColors(drawing: Drawing): { stroke: string; fill: string } {
+  if (drawing.tool !== 'priceRange') return STYLE[drawing.tool]
+  return drawing.points[1]!.price >= drawing.points[0]!.price ? UP : DOWN
 }
 
 const SELECTED_STROKE = '#f4f4f5'
 const PENDING_STROKE = 'rgba(244, 244, 245, 0.55)'
+const LABEL_BG = 'rgba(24, 24, 27, 0.85)'
 
 export interface PendingDrawing {
   tool: DrawingTool
@@ -58,6 +79,13 @@ export interface PendingDrawing {
   points: Point[]
   /** Live cursor position, shown as the not-yet-confirmed next point. */
   cursor: Point | null
+}
+
+/** Which part of a drawing a pointer is over — drives move vs. reshape. */
+export interface DrawingHandleHit {
+  id: string
+  /** Index into the drawing's own points array. */
+  index: number
 }
 
 type PixelPoint = { x: number; y: number }
@@ -134,6 +162,25 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     return this.pending
   }
 
+  /**
+   * Whole bars between two pixel columns, via the time scale's logical index.
+   *
+   * Logical indices rather than clock arithmetic on the two timestamps: this
+   * dashboard concatenates the previous session onto today, so there is a real
+   * overnight gap in the middle of every leg chart. Wall-clock difference would
+   * count that gap as elapsed bars; the logical index does not.
+   */
+  barsBetween(x1: number, x2: number): number | null {
+    const timeScale = this.chart?.timeScale()
+    if (!timeScale) return null
+
+    const a = timeScale.coordinateToLogical(x1)
+    const b = timeScale.coordinateToLogical(x2)
+    if (a === null || b === null) return null
+
+    return Math.abs(b - a)
+  }
+
   hitTest(x: number, y: number): PrimitiveHoveredItem | null {
     let best: { id: string; distance: number } | null = null
 
@@ -154,6 +201,34 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     }
   }
 
+  /**
+   * The anchor handle under a pointer, if any.
+   *
+   * Only the selected drawing's handles are grabbable, matching what is drawn:
+   * handles are rendered for the selection alone, and a control the user cannot
+   * see should not be one they can accidentally catch.
+   */
+  hitTestHandle(x: number, y: number): DrawingHandleHit | null {
+    const drawing = this.drawings.find((d) => d.id === this.selectedId)
+    if (!drawing) return null
+
+    let best: DrawingHandleHit | null = null
+    let bestDistance = HANDLE_GRAB_PX
+
+    drawing.points.forEach((point, index) => {
+      const pixel = this.toPixel(point)
+      if (!pixel) return
+
+      const distance = Math.hypot(pixel.x - x, pixel.y - y)
+      if (distance <= bestDistance) {
+        bestDistance = distance
+        best = { id: drawing.id, index }
+      }
+    })
+
+    return best
+  }
+
   /** Distance from a screen point to a drawing's nearest visible geometry, in CSS pixels. */
   private distanceTo(drawing: Drawing, x: number, y: number): number | null {
     const pixels = drawing.points.map((p) => this.toPixel(p))
@@ -165,9 +240,11 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
         return distanceToSegment(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y)
       case 'ray':
         return distanceToRay(x, y, pts[0]!.x, pts[0]!.y)
-      case 'rectangle': {
+      case 'rectangle':
+      case 'priceRange':
+      case 'dateRange': {
         const edge = distanceToRectEdge(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y)
-        // A click anywhere inside a rectangle selects it, not just on its border.
+        // A click anywhere inside the box selects it, not just on its border.
         if (isInsideRect(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y)) {
           return Math.min(edge, HIT_TOLERANCE_PX)
         }
@@ -229,7 +306,7 @@ class DrawingsPaneView implements IPrimitivePaneView {
     if (pixels.some((p) => p === null)) return
     const pts = pixels as PixelPoint[]
 
-    const style = STYLE[drawing.tool]
+    const style = measurementColors(drawing)
     const stroke = selected ? SELECTED_STROKE : style.stroke
 
     ctx.save()
@@ -240,33 +317,68 @@ class DrawingsPaneView implements IPrimitivePaneView {
     switch (drawing.tool) {
       case 'trendline':
         strokeLine(ctx, pts[0]!, pts[1]!)
-        drawHandles(ctx, pts, stroke, selected)
         break
       case 'ray':
         strokeLine(ctx, pts[0]!, { x: paneWidth, y: pts[0]!.y })
-        drawHandles(ctx, [pts[0]!], stroke, selected)
         break
       case 'rectangle':
-        ctx.fillRect(
-          Math.min(pts[0]!.x, pts[1]!.x),
-          Math.min(pts[0]!.y, pts[1]!.y),
-          Math.abs(pts[1]!.x - pts[0]!.x),
-          Math.abs(pts[1]!.y - pts[0]!.y),
-        )
-        ctx.strokeRect(
-          Math.min(pts[0]!.x, pts[1]!.x),
-          Math.min(pts[0]!.y, pts[1]!.y),
-          Math.abs(pts[1]!.x - pts[0]!.x),
-          Math.abs(pts[1]!.y - pts[0]!.y),
-        )
-        drawHandles(ctx, pts, stroke, selected)
+        strokeBox(ctx, pts[0]!, pts[1]!)
+        break
+      case 'priceRange':
+        this.drawPriceRange(ctx, drawing, pts, stroke)
+        break
+      case 'dateRange':
+        this.drawDateRange(ctx, drawing, pts, stroke)
         break
       case 'fib':
         this.drawFib(ctx, drawing, pts, paneWidth, stroke)
         break
     }
 
+    drawHandles(ctx, drawing.tool === 'ray' ? [pts[0]!] : pts, stroke, selected)
     ctx.restore()
+  }
+
+  /** A box spanning the two anchors, with a vertical arrow and the move as text. */
+  private drawPriceRange(
+    ctx: CanvasRenderingContext2D,
+    drawing: Drawing,
+    pts: PixelPoint[],
+    stroke: string,
+  ): void {
+    const [a, b] = pts as [PixelPoint, PixelPoint]
+    strokeBox(ctx, a, b)
+
+    const midX = (a.x + b.x) / 2
+    strokeLine(ctx, { x: midX, y: a.y }, { x: midX, y: b.y })
+    drawArrowHead(ctx, midX, b.y, b.y >= a.y ? 1 : -1, stroke)
+
+    const label = formatPriceDelta(drawing.points[0]!.price, drawing.points[1]!.price)
+    drawLabel(ctx, label, midX, (a.y + b.y) / 2, stroke)
+  }
+
+  /** A box spanning the two anchors, with a horizontal arrow and the span as text. */
+  private drawDateRange(
+    ctx: CanvasRenderingContext2D,
+    drawing: Drawing,
+    pts: PixelPoint[],
+    stroke: string,
+  ): void {
+    const [a, b] = pts as [PixelPoint, PixelPoint]
+    strokeBox(ctx, a, b)
+
+    const midY = (a.y + b.y) / 2
+    strokeLine(ctx, { x: a.x, y: midY }, { x: b.x, y: midY })
+    drawArrowHead(ctx, b.x, midY, b.x >= a.x ? 1 : -1, stroke, 'horizontal')
+
+    // Bar count comes from logical indices so the overnight gap between the
+    // previous session and today is not counted as elapsed bars.
+    const bars = this.primitive.barsBetween(a.x, b.x)
+    const seconds = drawing.points[1]!.time - drawing.points[0]!.time
+    const label =
+      bars === null ? formatBarSpan(0, seconds) : formatBarSpan(bars, seconds)
+
+    drawLabel(ctx, label, (a.x + b.x) / 2, midY, stroke)
   }
 
   private drawFib(
@@ -295,8 +407,6 @@ class DrawingsPaneView implements IPrimitivePaneView {
       ctx.fillStyle = stroke
       ctx.fillText(`${(fraction * 100).toFixed(1)}%  ${price.toFixed(2)}`, leftX + 4, y - 2)
     }
-
-    drawHandles(ctx, pts, stroke, false)
   }
 
   private drawPending(ctx: CanvasRenderingContext2D, pending: PendingDrawing, paneWidth: number): void {
@@ -315,13 +425,12 @@ class DrawingsPaneView implements IPrimitivePaneView {
     if (pending.tool === 'ray') {
       strokeLine(ctx, anchor, { x: paneWidth, y: anchor.y })
     } else if (cursor) {
-      if (pending.tool === 'rectangle') {
-        ctx.strokeRect(
-          Math.min(anchor.x, cursor.x),
-          Math.min(anchor.y, cursor.y),
-          Math.abs(cursor.x - anchor.x),
-          Math.abs(cursor.y - anchor.y),
-        )
+      if (
+        pending.tool === 'rectangle' ||
+        pending.tool === 'priceRange' ||
+        pending.tool === 'dateRange'
+      ) {
+        strokeBox(ctx, anchor, cursor)
       } else {
         strokeLine(ctx, anchor, cursor)
       }
@@ -340,6 +449,72 @@ function strokeLine(ctx: CanvasRenderingContext2D, a: PixelPoint, b: PixelPoint)
   ctx.stroke()
 }
 
+/** Fill-then-stroke a rectangle defined by any two opposite corners. */
+function strokeBox(ctx: CanvasRenderingContext2D, a: PixelPoint, b: PixelPoint): void {
+  const x = Math.min(a.x, b.x)
+  const y = Math.min(a.y, b.y)
+  const width = Math.abs(b.x - a.x)
+  const height = Math.abs(b.y - a.y)
+
+  ctx.fillRect(x, y, width, height)
+  ctx.strokeRect(x, y, width, height)
+}
+
+/** A small solid triangle at the measuring end of a range arrow. */
+function drawArrowHead(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  direction: 1 | -1,
+  color: string,
+  axis: 'vertical' | 'horizontal' = 'vertical',
+): void {
+  const size = 5
+
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.beginPath()
+
+  if (axis === 'vertical') {
+    ctx.moveTo(x, y)
+    ctx.lineTo(x - size * 0.6, y - size * direction)
+    ctx.lineTo(x + size * 0.6, y - size * direction)
+  } else {
+    ctx.moveTo(x, y)
+    ctx.lineTo(x - size * direction, y - size * 0.6)
+    ctx.lineTo(x - size * direction, y + size * 0.6)
+  }
+
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+}
+
+/** Centred text on an opaque plate, so a measurement stays readable over candles. */
+function drawLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  centerX: number,
+  centerY: number,
+  color: string,
+): void {
+  ctx.save()
+  ctx.font = '10px ui-monospace, monospace'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  const width = ctx.measureText(text).width
+  const padX = 4
+  const height = 14
+
+  ctx.fillStyle = LABEL_BG
+  ctx.fillRect(centerX - width / 2 - padX, centerY - height / 2, width + padX * 2, height)
+
+  ctx.fillStyle = color
+  ctx.fillText(text, centerX, centerY)
+  ctx.restore()
+}
+
 function drawHandles(
   ctx: CanvasRenderingContext2D,
   points: PixelPoint[],
@@ -352,7 +527,7 @@ function drawHandles(
   ctx.fillStyle = color
   for (const p of points) {
     ctx.beginPath()
-    ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2)
+    ctx.arc(p.x, p.y, HANDLE_RADIUS_PX, 0, Math.PI * 2)
     ctx.fill()
   }
   ctx.restore()

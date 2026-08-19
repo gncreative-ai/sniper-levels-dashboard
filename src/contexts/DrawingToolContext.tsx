@@ -7,6 +7,14 @@ export type ActiveDrawingTool = DrawingTool | 'none'
 export interface DrawingToolState {
   activeTool: ActiveDrawingTool
   setActiveTool: (tool: ActiveDrawingTool) => void
+  /**
+   * Magnet snap, TradingView's toggle: points land on the nearest bar's
+   * nearest OHLC value instead of wherever the pointer happened to be. Shared
+   * across charts like the tool itself, and applied both when placing a new
+   * drawing and when dragging an existing anchor.
+   */
+  magnet: boolean
+  setMagnet: (magnet: boolean) => void
 }
 
 /**
