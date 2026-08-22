@@ -15,6 +15,7 @@ import { ThemeContext } from '../contexts/ThemeContext'
 import { toChartTime } from '../lib/time'
 import { useChartSync } from '../hooks/useChartSync'
 import { useDrawingTools } from '../hooks/useDrawingTools'
+import { DrawingSettingsDialog } from './DrawingSettingsDialog'
 import {
   CANDLE_SERIES_OPTIONS,
   LINE_STYLES,
@@ -166,7 +167,20 @@ export function SpotChart({
   useChartSync(chartRef, seriesRef, data)
   // `data` doubles as the magnet's snap source — the same array the series is
   // drawn from, so a snapped point lands on a candle that is actually visible.
-  useDrawingTools(chartRef, seriesRef, data, sessionDate)
+  const drawingTools = useDrawingTools(chartRef, seriesRef, data, sessionDate)
 
-  return <div ref={containerRef} className="h-full w-full" />
+  return (
+    <>
+      <div ref={containerRef} className="h-full w-full" />
+      {drawingTools.editingDrawing && (
+        <DrawingSettingsDialog
+          drawing={drawingTools.editingDrawing}
+          bars={data}
+          onChange={drawingTools.updateDrawing}
+          onCancel={drawingTools.cancelEditor}
+          onDone={drawingTools.closeEditor}
+        />
+      )}
+    </>
+  )
 }

@@ -8,12 +8,15 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
+  ISeriesPrimitiveAxisView,
   PrimitiveHoveredItem,
   SeriesAttachedParameter,
   Time,
 } from 'lightweight-charts'
 import {
+  DASH_PATTERN,
   FIB_LEVELS,
+  withAlpha,
   distanceToRay,
   distanceToRectEdge,
   distanceToSegment,
@@ -22,6 +25,7 @@ import {
   formatPriceDelta,
   isInsideRect,
   type Drawing,
+  type DrawingStyle,
   type DrawingTool,
   type Point,
 } from './drawings'
@@ -50,28 +54,22 @@ const HIT_TOLERANCE_PX = 6
 export const HANDLE_RADIUS_PX = 3.5
 const HANDLE_GRAB_PX = 8
 
-const STYLE: Record<DrawingTool, { stroke: string; fill: string }> = {
-  trendline: { stroke: '#38bdf8', fill: 'transparent' },
-  ray: { stroke: '#38bdf8', fill: 'transparent' },
-  rectangle: { stroke: '#a78bfa', fill: 'rgba(167, 139, 250, 0.12)' },
-  fib: { stroke: '#f472b6', fill: 'transparent' },
-  // Measurement tools are recoloured by direction at draw time (see
-  // measurementColors) — these are the neutral fallbacks.
-  priceRange: { stroke: '#34d399', fill: 'rgba(52, 211, 153, 0.12)' },
-  dateRange: { stroke: '#60a5fa', fill: 'rgba(96, 165, 250, 0.12)' },
-}
+/** Which tools paint a filled body as well as a stroke. */
+const FILLED: ReadonlySet<DrawingTool> = new Set<DrawingTool>([
+  'rectangle',
+  'priceRange',
+  'dateRange',
+])
 
-const UP = { stroke: '#34d399', fill: 'rgba(52, 211, 153, 0.14)' }
-const DOWN = { stroke: '#f87171', fill: 'rgba(248, 113, 113, 0.14)' }
+const stroke = (style: DrawingStyle) => withAlpha(style.color, style.opacity)
+const fill = (style: DrawingStyle) => withAlpha(style.color, style.opacity * 0.14)
 
-/** Price range reads green when the move is up and red when it is down, like TradingView. */
-function measurementColors(drawing: Drawing): { stroke: string; fill: string } {
-  if (drawing.tool !== 'priceRange') return STYLE[drawing.tool]
-  return drawing.points[1]!.price >= drawing.points[0]!.price ? UP : DOWN
-}
+/** The settings badge drawn beside a selected drawing. */
+const GEAR_RADIUS_PX = 9
+const GEAR_OFFSET_PX = 16
 
-// Selection highlight, in-progress preview and label plate all come from the
-// active theme: a near-white selection stroke is invisible on a light chart.
+// The in-progress preview and the label plate come from the active theme: a
+// near-white preview stroke is invisible on a light chart.
 
 export interface PendingDrawing {
   tool: DrawingTool
@@ -213,6 +211,46 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /**
+   * True when the pointer is over the selected drawing's settings gear.
+   *
+   * Checked before the handle and body hit-tests, since the gear is drawn on
+   * top of them and a click there means "open settings", not "start a drag".
+   */
+  hitTestGear(x: number, y: number): string | null {
+    const drawing = this.drawings.find((d) => d.id === this.selectedId)
+    if (!drawing) return null
+
+    const anchor = this.toPixel(drawing.points[0]!)
+    if (!anchor) return null
+
+    const centre = gearCentre(anchor)
+    return Math.hypot(centre.x - x, centre.y - y) <= GEAR_RADIUS_PX ? drawing.id : null
+  }
+
+  /**
+   * Price-axis tags for drawings whose style asks for one.
+   *
+   * Lightweight Charts calls this on every axis repaint, so it stays a cheap
+   * map over the drawings rather than anything cached.
+   */
+  priceAxisViews(): readonly ISeriesPrimitiveAxisView[] {
+    const views: ISeriesPrimitiveAxisView[] = []
+
+    for (const drawing of this.drawings) {
+      if (!drawing.style.priceLabel) continue
+
+      for (const point of drawing.points) {
+        const y = this.series?.priceToCoordinate(point.price)
+        if (y === null || y === undefined) continue
+
+        views.push(new DrawingPriceAxisView(y, point.price, drawing.style.color))
+      }
+    }
+
+    return views
+  }
+
+  /**
    * The anchor handle under a pointer, if any.
    *
    * Only the selected drawing's handles are grabbable, matching what is drawn:
@@ -280,6 +318,51 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
+/** One price tag on the axis, for a drawing with `priceLabel` enabled. */
+class DrawingPriceAxisView implements ISeriesPrimitiveAxisView {
+  private readonly y: number
+  private readonly price: number
+  private readonly color: string
+
+  constructor(y: number, price: number, color: string) {
+    this.y = y
+    this.price = price
+    this.color = color
+  }
+
+  coordinate(): number {
+    return this.y
+  }
+
+  text(): string {
+    return this.price.toFixed(2)
+  }
+
+  textColor(): string {
+    // Dark text on light plates and vice versa, judged from the tag colour's
+    // own luminance rather than from the app theme: the plate is the drawing's
+    // colour, so that is what the text has to stay readable against.
+    return isLight(this.color) ? '#18181b' : '#fafafa'
+  }
+
+  backColor(): string {
+    return this.color
+  }
+}
+
+/** Rough perceptual luminance of a `#rrggbb` colour. */
+function isLight(hex: string): boolean {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex)
+  if (!match) return false
+
+  const value = parseInt(match[1]!, 16)
+  const r = (value >> 16) & 255
+  const g = (value >> 8) & 255
+  const b = value & 255
+
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6
+}
+
 class DrawingsPaneView implements IPrimitivePaneView {
   private readonly primitive: DrawingsPrimitive
 
@@ -317,14 +400,55 @@ class DrawingsPaneView implements IPrimitivePaneView {
     if (pixels.some((p) => p === null)) return
     const pts = pixels as PixelPoint[]
 
-    const style = measurementColors(drawing)
-    const stroke = selected ? this.primitive.ui().selected : style.stroke
+    const style = drawing.style
+    const ink = stroke(style)
 
     ctx.save()
-    ctx.lineWidth = selected ? 2 : 1.5
-    ctx.strokeStyle = stroke
-    ctx.fillStyle = style.fill
 
+    // Selection is shown as a translucent halo UNDER the drawing rather than by
+    // recolouring it. Recolouring would hide the very colour the settings
+    // dialog exists to change — and the dialog previews live, so the drawing
+    // has to keep its own colour while it is selected and being edited.
+    if (selected) {
+      ctx.save()
+      ctx.strokeStyle = withAlpha(this.primitive.ui().selected === '#f4f4f5' ? '#f4f4f5' : '#18181b', 0.35)
+      ctx.lineWidth = style.width + 5
+      ctx.setLineDash([])
+      this.drawGeometry(ctx, drawing, pts, paneWidth, ink, true)
+      ctx.restore()
+    }
+
+    ctx.lineWidth = style.width
+    ctx.strokeStyle = ink
+    ctx.fillStyle = FILLED.has(drawing.tool) ? fill(style) : 'transparent'
+    ctx.setLineDash(DASH_PATTERN[style.lineStyle])
+
+    this.drawGeometry(ctx, drawing, pts, paneWidth, ink, false)
+
+    ctx.setLineDash([])
+    drawHandles(ctx, drawing.tool === 'ray' ? [pts[0]!] : pts, ink, selected)
+
+    if (selected) this.drawGearBadge(ctx, pts[0]!)
+
+    ctx.restore()
+  }
+
+  /**
+   * The tool's own shape, with whatever stroke/fill/dash the caller has set.
+   *
+   * Split out so the selection halo can re-run the exact same geometry with a
+   * fatter, translucent stroke underneath — one definition of each shape rather
+   * than two that can drift apart. `haloPass` suppresses the text and arrow
+   * decorations, which would only smear under the real pass.
+   */
+  private drawGeometry(
+    ctx: CanvasRenderingContext2D,
+    drawing: Drawing,
+    pts: PixelPoint[],
+    paneWidth: number,
+    ink: string,
+    haloPass: boolean,
+  ): void {
     switch (drawing.tool) {
       case 'trendline':
         strokeLine(ctx, pts[0]!, pts[1]!)
@@ -336,17 +460,37 @@ class DrawingsPaneView implements IPrimitivePaneView {
         strokeBox(ctx, pts[0]!, pts[1]!)
         break
       case 'priceRange':
-        this.drawPriceRange(ctx, drawing, pts, stroke)
+        this.drawPriceRange(ctx, drawing, pts, ink, haloPass)
         break
       case 'dateRange':
-        this.drawDateRange(ctx, drawing, pts, stroke)
+        this.drawDateRange(ctx, drawing, pts, ink, haloPass)
         break
       case 'fib':
-        this.drawFib(ctx, drawing, pts, paneWidth, stroke)
+        this.drawFib(ctx, drawing, pts, paneWidth, ink, haloPass)
         break
     }
+  }
 
-    drawHandles(ctx, drawing.tool === 'ray' ? [pts[0]!] : pts, stroke, selected)
+  /** A small gear beside the selected drawing — the second way into settings. */
+  private drawGearBadge(ctx: CanvasRenderingContext2D, anchor: PixelPoint): void {
+    const { x, y } = gearCentre(anchor)
+    const ui = this.primitive.ui()
+
+    ctx.save()
+    ctx.setLineDash([])
+    ctx.beginPath()
+    ctx.arc(x, y, GEAR_RADIUS_PX, 0, Math.PI * 2)
+    ctx.fillStyle = ui.labelBackground
+    ctx.fill()
+    ctx.lineWidth = 1
+    ctx.strokeStyle = ui.selected
+    ctx.stroke()
+
+    ctx.fillStyle = ui.selected
+    ctx.font = '11px ui-monospace, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('⚙', x, y + 0.5)
     ctx.restore()
   }
 
@@ -355,17 +499,19 @@ class DrawingsPaneView implements IPrimitivePaneView {
     ctx: CanvasRenderingContext2D,
     drawing: Drawing,
     pts: PixelPoint[],
-    stroke: string,
+    ink: string,
+    haloPass: boolean,
   ): void {
     const [a, b] = pts as [PixelPoint, PixelPoint]
     strokeBox(ctx, a, b)
 
     const midX = (a.x + b.x) / 2
     strokeLine(ctx, { x: midX, y: a.y }, { x: midX, y: b.y })
-    drawArrowHead(ctx, midX, b.y, b.y >= a.y ? 1 : -1, stroke)
+    if (haloPass) return
+    drawArrowHead(ctx, midX, b.y, b.y >= a.y ? 1 : -1, ink)
 
     const label = formatPriceDelta(drawing.points[0]!.price, drawing.points[1]!.price)
-    drawLabel(ctx, label, midX, (a.y + b.y) / 2, stroke, this.primitive.ui().labelBackground)
+    drawLabel(ctx, label, midX, (a.y + b.y) / 2, ink, this.primitive.ui().labelBackground)
   }
 
   /** A box spanning the two anchors, with a horizontal arrow and the span as text. */
@@ -373,14 +519,16 @@ class DrawingsPaneView implements IPrimitivePaneView {
     ctx: CanvasRenderingContext2D,
     drawing: Drawing,
     pts: PixelPoint[],
-    stroke: string,
+    ink: string,
+    haloPass: boolean,
   ): void {
     const [a, b] = pts as [PixelPoint, PixelPoint]
     strokeBox(ctx, a, b)
 
     const midY = (a.y + b.y) / 2
     strokeLine(ctx, { x: a.x, y: midY }, { x: b.x, y: midY })
-    drawArrowHead(ctx, b.x, midY, b.x >= a.x ? 1 : -1, stroke, 'horizontal')
+    if (haloPass) return
+    drawArrowHead(ctx, b.x, midY, b.x >= a.x ? 1 : -1, ink, 'horizontal')
 
     // Bar count comes from logical indices so the overnight gap between the
     // previous session and today is not counted as elapsed bars.
@@ -389,7 +537,7 @@ class DrawingsPaneView implements IPrimitivePaneView {
     const label =
       bars === null ? formatBarSpan(0, seconds) : formatBarSpan(bars, seconds)
 
-    drawLabel(ctx, label, (a.x + b.x) / 2, midY, stroke, this.primitive.ui().labelBackground)
+    drawLabel(ctx, label, (a.x + b.x) / 2, midY, ink, this.primitive.ui().labelBackground)
   }
 
   private drawFib(
@@ -397,7 +545,8 @@ class DrawingsPaneView implements IPrimitivePaneView {
     drawing: Drawing,
     pts: PixelPoint[],
     paneWidth: number,
-    stroke: string,
+    ink: string,
+    haloPass: boolean,
   ): void {
     const leftX = Math.min(pts[0]!.x, pts[1]!.x)
     const fromPrice = drawing.points[0]!.price
@@ -415,7 +564,8 @@ class DrawingsPaneView implements IPrimitivePaneView {
       strokeLine(ctx, { x: leftX, y }, { x: paneWidth, y })
 
       ctx.globalAlpha = 1
-      ctx.fillStyle = stroke
+      if (haloPass) continue
+      ctx.fillStyle = ink
       ctx.fillText(`${(fraction * 100).toFixed(1)}%  ${price.toFixed(2)}`, leftX + 4, y - 2)
     }
   }
@@ -453,6 +603,11 @@ class DrawingsPaneView implements IPrimitivePaneView {
     drawHandles(ctx, cursor ? [anchor, cursor] : [anchor], pendingStroke, false)
     ctx.restore()
   }
+}
+
+/** Where the settings gear sits relative to a drawing's first anchor. */
+function gearCentre(anchor: PixelPoint): PixelPoint {
+  return { x: anchor.x + GEAR_OFFSET_PX, y: anchor.y - GEAR_OFFSET_PX }
 }
 
 function strokeLine(ctx: CanvasRenderingContext2D, a: PixelPoint, b: PixelPoint): void {

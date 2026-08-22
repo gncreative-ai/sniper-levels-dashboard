@@ -12,6 +12,7 @@ import type { LegSeries } from '../lib/legs'
 import { toChartTime } from '../lib/time'
 import { useChartSync } from '../hooks/useChartSync'
 import { useDrawingTools } from '../hooks/useDrawingTools'
+import { DrawingSettingsDialog } from './DrawingSettingsDialog'
 import {
   CANDLE_SERIES_OPTIONS,
   LINE_STYLES,
@@ -225,7 +226,12 @@ export function LegChart({ leg }: { leg: LegSeries }) {
   // Unlike SpotChart, the batch is part of the key: switching batches swaps
   // which contract this chart shows, so a drawing anchored to the old
   // contract's premium scale would land somewhere meaningless on the new one.
-  useDrawingTools(chartRef, seriesRef, data, `${leg.ref.sessionDate}::${leg.ref.atmBatch}`)
+  const drawingTools = useDrawingTools(
+    chartRef,
+    seriesRef,
+    data,
+    `${leg.ref.sessionDate}::${leg.ref.atmBatch}`,
+  )
 
   return (
     <div className="relative h-full w-full">
@@ -240,6 +246,16 @@ export function LegChart({ leg }: { leg: LegSeries }) {
         />
       )}
       <div ref={containerRef} className="h-full w-full" />
+
+      {drawingTools.editingDrawing && (
+        <DrawingSettingsDialog
+          drawing={drawingTools.editingDrawing}
+          bars={data}
+          onChange={drawingTools.updateDrawing}
+          onCancel={drawingTools.cancelEditor}
+          onDone={drawingTools.closeEditor}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useContext } from 'react'
 import type { Replay } from '../hooks/useReplay'
 import { ToolbarContext } from '../contexts/ToolbarContext'
+import { ChartSyncContext } from '../contexts/ChartSyncContext'
 import type { ActiveDrawingTool } from '../contexts/DrawingToolContext'
 import { ReplayControls } from './ReplayControls'
 import { DrawToolbar } from './DrawToolbar'
@@ -34,6 +35,7 @@ export function FloatingToolbar({
   onToggleMagnet: () => void
 }) {
   const { orientation, toggleOrientation } = useContext(ToolbarContext)
+  const chartSync = useContext(ChartSyncContext)
   const vertical = orientation === 'vertical'
 
   return (
@@ -57,6 +59,18 @@ export function FloatingToolbar({
       }`}
     >
       <OrientationButton vertical={vertical} onClick={toggleOrientation} />
+
+      {/* Re-frames all five charts at once — the counterpart to free zoom/pan,
+          which can leave the data scrolled off-screen. */}
+      <button
+        type="button"
+        aria-label="Fit all charts to their data"
+        title="Fit all charts to their data"
+        onClick={() => chartSync?.fitAll()}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-zinc-700 text-sm text-zinc-400 transition hover:border-amber-600 hover:text-amber-400"
+      >
+        <span aria-hidden="true">⤢</span>
+      </button>
 
       <Divider vertical={vertical} />
 

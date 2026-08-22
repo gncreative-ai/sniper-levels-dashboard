@@ -63,3 +63,21 @@ const HH_MM = new Intl.DateTimeFormat('en-GB', {
 export function formatIstTime(epochSeconds: number): string {
   return HH_MM.format(new Date(epochSeconds * 1000))
 }
+
+const DD_MMM = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Kolkata',
+  day: '2-digit',
+  month: 'short',
+})
+
+/**
+ * '11 Aug · 10:35' in IST, from a real instant.
+ *
+ * The day is part of it because the leg charts concatenate the previous
+ * session onto today, so a bare time is ambiguous by exactly one day for half
+ * the bars on those charts.
+ */
+export function formatIstDayTime(epochSeconds: number): string {
+  const date = new Date(epochSeconds * 1000)
+  return `${DD_MMM.format(date)} · ${HH_MM.format(date)}`
+}
