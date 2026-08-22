@@ -10,9 +10,9 @@ import type { UTCTimestamp } from 'lightweight-charts'
  * discipline the overlay lines and the leg-chart divider already follow, so a
  * drawing stays glued to the right place through zoom, pan, and resize.
  *
- * Scope: create, select, move/reshape, delete, and magnet snapping. Still out
- * of scope until asked for: persistence across a reload, undo/redo, and
- * per-drawing style options (one default style per tool).
+ * Scope: create, select, move/reshape, delete, magnet snapping, and per-drawing
+ * style and coordinate editing. Still out of scope until asked for:
+ * persistence across a reload, and undo/redo.
  */
 
 export type DrawingTool =
@@ -61,6 +61,102 @@ export interface Drawing {
   tool: DrawingTool
   /** Exactly TOOL_POINT_COUNT[tool] points, in click order. */
   points: Point[]
+  style: DrawingStyle
+}
+
+// --- Per-drawing style -----------------------------------------------------
+
+export type LineStyleName = 'solid' | 'dashed' | 'dotted'
+
+export const LINE_STYLE_NAMES: readonly LineStyleName[] = ['solid', 'dashed', 'dotted']
+
+/** Canvas dash patterns. Solid is an empty pattern, not a very long dash. */
+export const DASH_PATTERN: Record<LineStyleName, number[]> = {
+  solid: [],
+  dashed: [6, 4],
+  dotted: [2, 3],
+}
+
+export const LINE_WIDTHS = [1, 2, 3, 4] as const
+export type LineWidth = (typeof LINE_WIDTHS)[number]
+
+export interface DrawingStyle {
+  /** Opaque hex, `#rrggbb`. Opacity is separate so the swatch stays readable. */
+  color: string
+  /** 0–1. Applied to the stroke, and to the fill on top of its own tint. */
+  opacity: number
+  width: LineWidth
+  lineStyle: LineStyleName
+  /** Show this drawing's anchor price(s) on the price axis. */
+  priceLabel: boolean
+}
+
+/** The picker grid. Ten hues over two tones, plus black and white at the ends. */
+export const DRAWING_PALETTE: readonly string[] = [
+  '#ffffff', '#d4d4d8', '#71717a', '#000000',
+  '#f23645', '#f87171', '#fb923c', '#fbbf24',
+  '#089981', '#34d399', '#22d3ee', '#38bdf8',
+  '#3b82f6', '#818cf8', '#a78bfa', '#e879f9',
+  '#f472b6', '#fda4af', '#a16207', '#065f46',
+]
+
+/**
+ * A drawing's style at creation.
+ *
+ * Price Range takes its colour from the direction of the move, the way
+ * TradingView does — but only once, here. After creation the colour belongs to
+ * the user, so dragging an anchor through the other side later does NOT
+ * silently repaint a drawing they may have deliberately coloured.
+ *
+ * The price label defaults on only for a horizontal ray, where the whole point
+ * is the level it marks; on the other tools it would just crowd the axis.
+ */
+export function defaultStyle(tool: DrawingTool, points: readonly Point[]): DrawingStyle {
+  const base: DrawingStyle = {
+    color: TOOL_DEFAULT_COLOR[tool],
+    opacity: 1,
+    width: 2,
+    lineStyle: 'solid',
+    priceLabel: tool === 'ray',
+  }
+
+  if (tool !== 'priceRange') return base
+
+  const rising = (points[1]?.price ?? 0) >= (points[0]?.price ?? 0)
+  return { ...base, color: rising ? '#34d399' : '#f87171' }
+}
+
+const TOOL_DEFAULT_COLOR: Record<DrawingTool, string> = {
+  trendline: '#38bdf8',
+  ray: '#38bdf8',
+  rectangle: '#a78bfa',
+  fib: '#f472b6',
+  priceRange: '#34d399',
+  dateRange: '#60a5fa',
+}
+
+/**
+ * `#rrggbb` plus an alpha, as an `rgba()` string.
+ *
+ * Returns the input untouched if it is not a six-digit hex, so a malformed
+ * colour degrades to "drawn in whatever that is" rather than to an exception
+ * inside a canvas render loop.
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex)
+  if (!match) return hex
+
+  const value = parseInt(match[1]!, 16)
+  const r = (value >> 16) & 255
+  const g = (value >> 8) & 255
+  const b = value & 255
+
+  return `rgba(${r}, ${g}, ${b}, ${clamp01(alpha)})`
+}
+
+function clamp01(value: number): number {
+  if (Number.isNaN(value)) return 1
+  return Math.min(1, Math.max(0, value))
 }
 
 let nextId = 0

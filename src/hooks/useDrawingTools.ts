@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, type RefObject } from 'react'
 import type {
   IChartApi,
   ISeriesApi,
@@ -11,6 +11,7 @@ import { ThemeContext } from '../contexts/ThemeContext'
 import { DrawingsPrimitive, type PendingDrawing } from '../lib/drawingPrimitive'
 import {
   TOOL_POINT_COUNT,
+  defaultStyle,
   makeDrawingId,
   snapToBar,
   type Bar,
@@ -98,6 +99,34 @@ export function useDrawingTools(
     drawingsRef.current = drawings
   }, [drawings])
 
+  /**
+   * The drawing whose settings dialog is open, plus the snapshot taken when it
+   * opened. Edits apply live so the chart previews them, which means Cancel
+   * needs something to restore — that is what the snapshot is for.
+   */
+  const [editing, setEditing] = useState<{ id: string; original: Drawing } | null>(null)
+
+  const openEditor = useCallback((id: string) => {
+    const drawing = drawingsRef.current.find((d) => d.id === id)
+    if (!drawing) return
+    setSelectedId(id)
+    setEditing({ id, original: drawing })
+  }, [])
+
+  const closeEditor = useCallback(() => setEditing(null), [])
+
+  const cancelEditor = useCallback(() => {
+    const snapshot = editing
+    if (!snapshot) return
+    setDrawings((list) => list.map((d) => (d.id === snapshot.id ? snapshot.original : d)))
+    setEditing(null)
+  }, [editing])
+
+  /** Live-apply a change from the dialog. */
+  const updateDrawing = useCallback((id: string, patch: Partial<Drawing>) => {
+    setDrawings((list) => list.map((d) => (d.id === id ? { ...d, ...patch } : d)))
+  }, [])
+
   const dragRef = useRef<DragState | null>(null)
   /** A drag ends in a click event too; that click must not re-run selection. */
   const suppressClickRef = useRef(false)
@@ -108,7 +137,14 @@ export function useDrawingTools(
     setDrawings([])
     setSelectedId(null)
     setPending(null)
+    setEditing(null)
   }, [resetKey])
+
+  // A dialog open on a drawing that no longer exists (deleted with the keyboard
+  // while it was open) would edit nothing and never close.
+  useEffect(() => {
+    if (editing && !drawings.some((d) => d.id === editing.id)) setEditing(null)
+  }, [drawings, editing])
 
   // Switching tools (including to/from 'none') abandons any half-placed
   // drawing rather than leaving a dangling first point behind.
@@ -239,7 +275,10 @@ export function useDrawingTools(
 
       // Commit — two independent top-level calls, neither nested in the
       // other's updater (see the module comment on the keydown handler).
-      setDrawings((list) => [...list, { id: makeDrawingId(), tool: activeTool, points }])
+      setDrawings((list) => [
+        ...list,
+        { id: makeDrawingId(), tool: activeTool, points, style: defaultStyle(activeTool, points) },
+      ])
       setPending(null)
     }
 
@@ -248,14 +287,23 @@ export function useDrawingTools(
       setPending((current) => (current ? { ...current, cursor: point } : current))
     }
 
+    function handleDoubleClick(param: MouseEventParams<Time>) {
+      if (activeTool !== 'none' || !param.point) return
+
+      const hit = primitiveRef.current?.hitTest(param.point.x, param.point.y)
+      if (typeof hit?.externalId === 'string') openEditor(hit.externalId)
+    }
+
     chart.subscribeClick(handleClick)
     chart.subscribeCrosshairMove(handleMove)
+    chart.subscribeDblClick(handleDoubleClick)
 
     return () => {
       chart.unsubscribeClick(handleClick)
       chart.unsubscribeCrosshairMove(handleMove)
+      chart.unsubscribeDblClick(handleDoubleClick)
     }
-  }, [chartRef, seriesRef, activeTool])
+  }, [chartRef, seriesRef, activeTool, openEditor])
 
   // --- Editing: drag a whole drawing, or one of its anchor handles ---
   useEffect(() => {
@@ -299,6 +347,14 @@ export function useDrawingTools(
       if (!primitive) return
 
       const { x, y } = toPane(event)
+
+      // The gear sits on top of everything, so it is tested first: a click
+      // there means "open settings", not "start dragging".
+      const gearId = primitive.hitTestGear(x, y)
+      if (gearId) {
+        openEditor(gearId)
+        return
+      }
 
       // A handle beats the body: grabbing an endpoint reshapes, grabbing
       // anywhere else on the same drawing moves the whole thing.
@@ -373,9 +429,20 @@ export function useDrawingTools(
       dragRef.current = null
     }
     // Deliberately NOT depending on `drawings` — see drawingsRef above.
-  }, [chartRef, seriesRef, activeTool])
+    // Deliberately NOT depending on `drawings` — see drawingsRef above.
+  }, [chartRef, seriesRef, activeTool, openEditor])
 
-  return { drawingCount: drawings.length, hasSelection: selectedId !== null }
+  const editingDrawing = editing ? drawings.find((d) => d.id === editing.id) ?? null : null
+
+  return {
+    drawingCount: drawings.length,
+    hasSelection: selectedId !== null,
+    /** The drawing being edited, or null when the dialog is closed. */
+    editingDrawing,
+    updateDrawing,
+    closeEditor,
+    cancelEditor,
+  }
 }
 
 interface DragState {

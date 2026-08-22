@@ -135,8 +135,21 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 Draw tools cover trend line, horizontal ray, rectangle, fib retracement, and the
 two measurement tools (price range, date range), on all five charts. A drawing
 can be selected, dragged to move, reshaped by its anchor handles, and deleted.
-Magnet snapping is a toolbar toggle. Still deliberately out of scope: persistence
-across a reload, undo/redo, and per-drawing style options.
+Magnet snapping is a toolbar toggle.
+
+Each drawing has its own settings, opened by double-clicking it or by the gear
+that appears beside the selection: colour, opacity, thickness, line style, a
+price-label toggle, and numeric coordinates for every anchor. Edits apply live
+so the chart previews them, and Cancel restores the drawing as it was when the
+dialog opened.
+
+Two details worth knowing before changing that code. Selection draws a
+translucent halo *under* the drawing rather than recolouring it — recolouring
+would hide the very colour the dialog exists to change. And coordinate times are
+picked from the chart's own bars rather than typed: anchors are quantised to
+bars anyway, so a free-text timestamp could only ever be rounded to one of them.
+
+Still deliberately out of scope: persistence across a reload, and undo/redo.
 
 ### Theming
 

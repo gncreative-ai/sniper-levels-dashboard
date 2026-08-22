@@ -42,6 +42,16 @@ export interface SyncedChart {
 export interface ChartSyncGroup {
   /** Register a chart into the group. Call the returned function to leave it. */
   register: (member: SyncedChart) => () => void
+  /**
+   * Re-frame every chart on its own data.
+   *
+   * Lives here because this group is already the one place that knows about
+   * all five charts at once. Each chart fits its OWN data rather than sharing
+   * a range: the legs carry the previous session plus today, the spot chart
+   * only today, so a single shared range would leave some of them badly
+   * framed.
+   */
+  fitAll: () => void
 }
 
 /** One group per session view — see useChartSync.ts for where it is created. */
@@ -65,6 +75,10 @@ export function createChartSyncGroup(): ChartSyncGroup {
   }
 
   return {
+    fitAll() {
+      for (const member of members) member.chart.timeScale().fitContent()
+    },
+
     register(member) {
       members.add(member)
 
