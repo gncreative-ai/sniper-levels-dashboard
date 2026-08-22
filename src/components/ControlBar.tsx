@@ -1,5 +1,4 @@
 import { useContext } from 'react'
-import type { Replay } from '../hooks/useReplay'
 import {
   OVERLAY_DEFINITIONS,
   overlayColor,
@@ -7,15 +6,16 @@ import {
   type OverlayVisibility,
 } from '../lib/overlays'
 import { ThemeContext } from '../contexts/ThemeContext'
-import { ReplayControls } from './ReplayControls'
-import { DrawToolbar } from './DrawToolbar'
-import type { ActiveDrawingTool } from '../contexts/DrawingToolContext'
 import { ATM_BATCHES, ATM_BATCH_LABELS, type AtmBatch, type SessionSetup } from '../lib/types'
 import { formatPrice } from '../lib/format'
 
 /**
- * The control row from spec §4.1, all in one row: ATM batch toggle, the six
- * overlay switches, replay controls, and (spec §4.5) the draw-tool picker.
+ * The control row from spec §4.1: the ATM batch toggle and the six overlay
+ * switches.
+ *
+ * Replay and the draw tools used to live here too; they moved to the floating
+ * toolbar because they are used continuously while reading a chart, whereas
+ * these are set once for a session. See FloatingToolbar for that reasoning.
  *
  * Overlay toggles are pure client-side visibility and never trigger a fetch
  * (spec §4.3). The batch toggle does not fetch either — all three batches
@@ -27,22 +27,12 @@ export function ControlBar({
   onBatchChange,
   visibility,
   onVisibilityChange,
-  replay,
-  activeDrawingTool,
-  onSelectDrawingTool,
-  magnet,
-  onToggleMagnet,
 }: {
   setup: SessionSetup
   batch: AtmBatch
   onBatchChange: (batch: AtmBatch) => void
   visibility: OverlayVisibility
   onVisibilityChange: (id: OverlayId) => void
-  replay: Replay
-  activeDrawingTool: ActiveDrawingTool
-  onSelectDrawingTool: (tool: ActiveDrawingTool) => void
-  magnet: boolean
-  onToggleMagnet: () => void
 }) {
   const active = setup[batch]
   const { theme } = useContext(ThemeContext)
@@ -135,15 +125,6 @@ export function ControlBar({
             })}
           </div>
         </div>
-
-        <ReplayControls replay={replay} />
-
-        <DrawToolbar
-          activeTool={activeDrawingTool}
-          onSelectTool={onSelectDrawingTool}
-          magnet={magnet}
-          onToggleMagnet={onToggleMagnet}
-        />
       </div>
 
       {active && <BatchSummary batch={batch} setup={setup} />}
