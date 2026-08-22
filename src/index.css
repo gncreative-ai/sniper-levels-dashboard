@@ -4,6 +4,63 @@
   --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
+/*
+ * Light theme.
+ *
+ * This is a palette swap, not a set of per-component `light:` variants, and
+ * that is a deliberate choice worth explaining because it looks unusual.
+ *
+ * Tailwind v4 compiles every colour utility to a variable reference —
+ * `.bg-zinc-950` emits `background-color: var(--color-zinc-950)`. Redefining
+ * those variables under a selector therefore re-themes every existing class at
+ * once, with no component edits at all. The alternative was hand-adding a
+ * light variant to several hundred class strings across a dozen components,
+ * where the failure mode is a missed one that stays dark-on-dark and is only
+ * found by eye.
+ *
+ * It works because the design uses the zinc scale consistently as "distance
+ * from the background": 950 is the page, 900/800 are panels and borders,
+ * 300/200/100 are text. Reversing the scale flips that relationship intact.
+ * The rule to keep when adding UI: pick a zinc shade by how far it should sit
+ * from the background, never by whether it "looks dark".
+ *
+ * Accents are mirrored by hand rather than reversed, because they carry
+ * meaning: amber still has to read as the active/selected colour and red as a
+ * warning, so each shade maps to the one with comparable contrast against the
+ * opposite background.
+ */
+[data-theme='light'] {
+  --color-zinc-950: #ffffff;
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-600: #71717a;
+  --color-zinc-500: #52525b;
+  --color-zinc-400: #3f3f46;
+  --color-zinc-300: #27272a;
+  --color-zinc-200: #18181b;
+  --color-zinc-100: #09090b;
+
+  --color-amber-950: #fef3c7;
+  --color-amber-600: #b45309;
+  --color-amber-500: #d97706;
+  --color-amber-400: #b45309;
+  --color-amber-300: #92400e;
+
+  --color-emerald-600: #047857;
+  --color-emerald-500: #059669;
+  --color-emerald-400: #047857;
+  --color-emerald-300: #065f46;
+
+  --color-red-950: #fef2f2;
+  --color-red-900: #fee2e2;
+  --color-red-800: #fecaca;
+  --color-red-500: #dc2626;
+  --color-red-400: #b91c1c;
+  --color-red-300: #991b1b;
+  --color-red-200: #7f1d1d;
+}
+
 html,
 body,
 #root {

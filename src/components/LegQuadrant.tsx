@@ -1,4 +1,7 @@
+import { useContext } from 'react'
 import { LegChart } from './LegChart'
+import { ThemeContext } from '../contexts/ThemeContext'
+import { LINE_COLORS, themed } from '../lib/theme'
 import { EmptyPanel } from './StatusPanels'
 import type { LegSeries } from '../lib/legs'
 import { formatCount, formatPrice } from '../lib/format'
@@ -31,6 +34,7 @@ export function LegQuadrant({ legs }: { legs: LegSeries[] }) {
 }
 
 function LegCell({ leg }: { leg: LegSeries }) {
+  const { theme } = useContext(ThemeContext)
   const totalBars = leg.prevBars.length + leg.todayBars.length
 
   return (
@@ -46,11 +50,15 @@ function LegCell({ leg }: { leg: LegSeries }) {
         </div>
 
         <dl className="flex flex-wrap items-baseline gap-x-3 font-mono text-[10px]">
-          <Level label="P.Close" value={leg.prevClose} color="#60a5fa" />
-          <Level label="P.High" value={leg.prevHigh} color="#93c5fd" />
+          <Level label="P.Close" value={leg.prevClose} color={themed(LINE_COLORS.prevClose, theme)} />
+          <Level label="P.High" value={leg.prevHigh} color={themed(LINE_COLORS.prevHigh, theme)} />
           {/* Only the ATM legs carry a sniper level (spec §4.4). */}
           {(leg.role === 'ATM_CE' || leg.role === 'ATM_PE') && (
-            <Level label="Sniper" value={leg.sniperLevel} color="#fbbf24" />
+            <Level
+              label="Sniper"
+              value={leg.sniperLevel}
+              color={themed(LINE_COLORS.contrast, theme)}
+            />
           )}
         </dl>
       </header>
@@ -85,7 +93,13 @@ function Level({ label, value, color }: { label: string; value: number | null; c
   return (
     <div className="flex items-baseline gap-1">
       <dt className="flex items-center gap-1 text-zinc-600">
-        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+        {/* Ringed so the contrast-coloured dot (white on dark, black on light)
+            stays visible against a panel of nearly the same colour. */}
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 rounded-full ring-1 ring-zinc-700"
+          style={{ background: color }}
+        />
         {label}
       </dt>
       <dd className={value === null ? 'text-zinc-600' : 'text-zinc-300'}>{formatPrice(value)}</dd>

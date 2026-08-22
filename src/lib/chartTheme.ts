@@ -6,6 +6,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { OverlayStyle } from './overlays'
+import { CHART_UI, type Theme } from './theme'
 import { formatIstTime, fromChartTime } from './time'
 
 /**
@@ -16,14 +17,10 @@ import { formatIstTime, fromChartTime } from './time'
  * definition here beats five drifting copies.
  */
 
+/** Candle colours, unchanged across themes — both read correctly either way. */
 export const CHART_COLORS = {
   up: '#10b981',
   down: '#ef4444',
-  grid: '#27272a',
-  border: '#3f3f46',
-  text: '#a1a1aa',
-  crosshair: '#71717a',
-  label: '#18181b',
 } as const
 
 export const MONO_FONT =
@@ -54,38 +51,51 @@ const priceFormat = (price: number) =>
  * lib/time.ts. Formatters convert back before formatting so the displayed time
  * comes from one definition rather than relying on the shift twice.
  */
-export function baseChartOptions(fontSize: number): DeepPartial<ChartOptions> {
+export function baseChartOptions(fontSize: number, theme: Theme): DeepPartial<ChartOptions> {
+  const ui = CHART_UI[theme]
+
   return {
     autoSize: true,
     layout: {
       background: { color: 'transparent' },
-      textColor: CHART_COLORS.text,
+      textColor: ui.text,
       fontFamily: MONO_FONT,
       fontSize,
       attributionLogo: false,
     },
     grid: {
-      vertLines: { color: CHART_COLORS.grid },
-      horzLines: { color: CHART_COLORS.grid },
+      vertLines: { color: ui.grid },
+      horzLines: { color: ui.grid },
     },
     rightPriceScale: {
-      borderColor: CHART_COLORS.border,
+      borderColor: ui.border,
       scaleMargins: { top: 0.1, bottom: 0.1 },
     },
     timeScale: {
-      borderColor: CHART_COLORS.border,
+      borderColor: ui.border,
       timeVisible: true,
       secondsVisible: false,
       tickMarkFormatter: (time: UTCTimestamp) => formatIstTime(fromChartTime(time)),
-      // Zoom/pan bounds (spec §4.5): a chart must not zoom into nothing —
-      // library default minBarSpacing (0.5px) lets bars shrink sub-pixel and
-      // vanish — nor zoom in so far a single candle fills the pane with
-      // nothing else visible. Panning is similarly bounded to the data itself
-      // rather than into empty space on either side.
-      minBarSpacing: 2,
+      // Zoom/pan (spec §4.5). A lower bound on bar spacing still applies, so
+      // bars cannot shrink sub-pixel and vanish, and an upper bound stops a
+      // single candle filling the pane.
+      //
+      // The edges are deliberately NOT fixed. They were, in phase 7, which
+      // pinned the visible range to the data and had a consequence that only
+      // shows up in use: once zoomed out to fit, there was nothing further to
+      // zoom out into and no empty space to pan across, so the chart felt
+      // stuck at exactly one zoom-out limit. Leaving the edges free restores
+      // TradingView's feel — scroll past the first and last bar, and keep
+      // zooming out past fit — at the cost of being able to scroll the data
+      // off-screen, which is recoverable and is the normal trade every
+      // charting tool makes.
+      minBarSpacing: 0.5,
       maxBarSpacing: 60,
-      fixLeftEdge: true,
-      fixRightEdge: true,
+      fixLeftEdge: false,
+      fixRightEdge: false,
+      // Breathing room past the last bar, so the most recent candle is not
+      // jammed against the price axis.
+      rightOffset: 6,
     },
     localization: {
       timeFormatter: (time: UTCTimestamp) => `${formatIstTime(fromChartTime(time))} IST`,
@@ -93,8 +103,8 @@ export function baseChartOptions(fontSize: number): DeepPartial<ChartOptions> {
     },
     crosshair: {
       mode: 0,
-      vertLine: { color: CHART_COLORS.crosshair, labelBackgroundColor: CHART_COLORS.label },
-      horzLine: { color: CHART_COLORS.crosshair, labelBackgroundColor: CHART_COLORS.label },
+      vertLine: { color: ui.crosshair, labelBackgroundColor: ui.labelBackground },
+      horzLine: { color: ui.crosshair, labelBackgroundColor: ui.labelBackground },
     },
     handleScroll: true,
     handleScale: true,

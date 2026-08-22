@@ -1,5 +1,12 @@
+import { useContext } from 'react'
 import type { Replay } from '../hooks/useReplay'
-import { OVERLAY_DEFINITIONS, type OverlayId, type OverlayVisibility } from '../lib/overlays'
+import {
+  OVERLAY_DEFINITIONS,
+  overlayColor,
+  type OverlayId,
+  type OverlayVisibility,
+} from '../lib/overlays'
+import { ThemeContext } from '../contexts/ThemeContext'
 import { ReplayControls } from './ReplayControls'
 import { DrawToolbar } from './DrawToolbar'
 import type { ActiveDrawingTool } from '../contexts/DrawingToolContext'
@@ -38,6 +45,7 @@ export function ControlBar({
   onToggleMagnet: () => void
 }) {
   const active = setup[batch]
+  const { theme } = useContext(ThemeContext)
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-zinc-800 bg-zinc-900/30 px-4 py-3">
@@ -109,8 +117,8 @@ export function ControlBar({
                     aria-hidden="true"
                     className="h-2 w-2 shrink-0 rounded-full"
                     style={{
-                      backgroundColor: on ? definition.color : 'transparent',
-                      border: `1px solid ${definition.color}`,
+                      backgroundColor: on ? overlayColor(definition, theme) : 'transparent',
+                      border: `1px solid ${overlayColor(definition, theme)}`,
                       opacity: on ? 1 : 0.45,
                     }}
                   />

@@ -7,6 +7,7 @@ import type {
   UTCTimestamp,
 } from 'lightweight-charts'
 import { DrawingToolContext } from '../contexts/DrawingToolContext'
+import { ThemeContext } from '../contexts/ThemeContext'
 import { DrawingsPrimitive, type PendingDrawing } from '../lib/drawingPrimitive'
 import {
   TOOL_POINT_COUNT,
@@ -49,6 +50,7 @@ export function useDrawingTools(
   bars: readonly Bar[],
   resetKey: string,
 ) {
+  const { theme } = useContext(ThemeContext)
   const toolState = useContext(DrawingToolContext)
   const activeTool = toolState?.activeTool ?? 'none'
   const magnet = toolState?.magnet ?? false
@@ -152,6 +154,10 @@ export function useDrawingTools(
   useEffect(() => {
     primitiveRef.current?.setPending(pending)
   }, [pending])
+
+  useEffect(() => {
+    primitiveRef.current?.setTheme(theme)
+  }, [theme])
 
   // Delete the selected drawing, or cancel a half-placed one, on Escape/Delete.
   //
