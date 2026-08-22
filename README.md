@@ -152,6 +152,23 @@ per-component variants — the reasoning is in a comment there, and it matters i
 you add UI: pick a zinc shade by how far it should sit from the background, not
 by whether it "looks dark".
 
+### The floating toolbar
+
+Replay and the draw tools are docked in a fixed-position toolbar so they stay
+reachable while scrolling — the four leg charts are taller than a viewport, and
+having to scroll back to the top to change tool or step a bar was the problem.
+A button in the bar switches between **horizontal along the top** and
+**vertical down the left**; the choice is remembered in `localStorage`.
+
+The page reserves space for whichever dock is active (`TOOLBAR_CLEARANCE` in
+`lib/toolbarLayout.ts`) rather than letting the bar overlay content. Those
+numbers are measured against the rendered bar, so if its contents change enough
+to alter its size they have to change too — the browser check asserts the dock
+and the page header do not overlap, because that failure is silent otherwise.
+
+The ATM batch and overlay toggles stay in the in-page control bar: they are set
+once for a session, not used continuously while reading a chart.
+
 ### Zoom and pan
 
 The time scale edges are deliberately not fixed, so a chart can be zoomed out

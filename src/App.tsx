@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActiveSessionPanel } from './components/ActiveSessionPanel'
 import { DateRangeSelector, type DateRange } from './components/DateRangeSelector'
 import { ControlBar } from './components/ControlBar'
+import { FloatingToolbar } from './components/FloatingToolbar'
 import { LegQuadrantPanel } from './components/LegQuadrantPanel'
 import { SessionScrubber } from './components/SessionScrubber'
 import { SpotChartPanel } from './components/SpotChartPanel'
@@ -20,7 +21,14 @@ import { createChartSyncGroup } from './lib/chartSync'
 import { ChartSyncContext } from './contexts/ChartSyncContext'
 import { DrawingToolContext, type ActiveDrawingTool } from './contexts/DrawingToolContext'
 import { ThemeContext } from './contexts/ThemeContext'
+import { ToolbarContext } from './contexts/ToolbarContext'
 import { initialTheme, persistTheme, type Theme } from './lib/theme'
+import {
+  TOOLBAR_CLEARANCE,
+  initialOrientation,
+  persistOrientation,
+  type ToolbarOrientation,
+} from './lib/toolbarLayout'
 
 /** Sessions shown on first load. The full range stays one click away. */
 const DEFAULT_RANGE_MONTHS = 3
@@ -49,10 +57,37 @@ export default function App() {
 
   const themeState = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme])
 
+  // Where the floating toolbar docks — remembered like the theme, since it is
+  // a workspace preference rather than anything about the session.
+  const [orientation, setOrientation] = useState<ToolbarOrientation>(initialOrientation)
+  const toggleOrientation = useCallback(() => {
+    setOrientation((current) => {
+      const next = current === 'horizontal' ? 'vertical' : 'horizontal'
+      persistOrientation(next)
+      return next
+    })
+  }, [])
+
+  const toolbarState = useMemo(
+    () => ({ orientation, toggleOrientation }),
+    [orientation, toggleOrientation],
+  )
+
   return (
     <ThemeContext.Provider value={themeState}>
+    <ToolbarContext.Provider value={toolbarState}>
     <div className="min-h-full bg-zinc-950">
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      {/* Space reserved for whichever dock is active, applied to the whole page
+          rather than to the session content: the floating bar sits above the
+          header too, so reserving it any lower would leave the title covered. */}
+      <div
+        className="mx-auto max-w-7xl px-4 py-8"
+        style={
+          orientation === 'horizontal'
+            ? { paddingTop: TOOLBAR_CLEARANCE.horizontal }
+            : { paddingLeft: TOOLBAR_CLEARANCE.vertical }
+        }
+      >
         <Header
           projectRef={supabaseProjectRef}
           totalSessions={state.status === 'ready' && state.data ? state.data.total : null}
@@ -83,6 +118,7 @@ export default function App() {
         </footer>
       </div>
     </div>
+    </ToolbarContext.Provider>
     </ThemeContext.Provider>
   )
 }
@@ -124,6 +160,7 @@ function SessionBrowser({ bounds }: { bounds: SessionBounds }) {
   // way of working, not a property of the session being looked at.
   const [magnet, setMagnet] = useState(false)
   const toggleMagnet = useCallback(() => setMagnet((on) => !on), [])
+
 
   const toggleOverlay = useCallback((id: OverlayId) => {
     setVisibility((current) => ({ ...current, [id]: !current[id] }))
@@ -292,6 +329,14 @@ function SessionOverlays({
   return (
     <ChartSyncContext.Provider value={chartSync}>
     <DrawingToolContext.Provider value={drawingToolState}>
+      <FloatingToolbar
+        replay={replay}
+        activeDrawingTool={activeDrawingTool}
+        onSelectDrawingTool={onSelectDrawingTool}
+        magnet={magnet}
+        onToggleMagnet={onToggleMagnet}
+      />
+
       {state.status === 'loading' && <LoadingPanel label="Loading session setup…" />}
 
       {state.status === 'error' && (
@@ -306,11 +351,6 @@ function SessionOverlays({
             onBatchChange={onBatchChange}
             visibility={visibility}
             onVisibilityChange={onToggleOverlay}
-            replay={replay}
-            activeDrawingTool={activeDrawingTool}
-            onSelectDrawingTool={onSelectDrawingTool}
-            magnet={magnet}
-            onToggleMagnet={onToggleMagnet}
           />
         ) : (
           <EmptyPanel message="No setup rows for this session, so there are no overlay levels to draw." />
