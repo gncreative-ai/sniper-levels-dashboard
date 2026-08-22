@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActiveSessionPanel } from './components/ActiveSessionPanel'
 import { DateRangeSelector, type DateRange } from './components/DateRangeSelector'
 import { ControlBar } from './components/ControlBar'
@@ -19,6 +19,8 @@ import { computeRevealCutoff } from './lib/replay'
 import { createChartSyncGroup } from './lib/chartSync'
 import { ChartSyncContext } from './contexts/ChartSyncContext'
 import { DrawingToolContext, type ActiveDrawingTool } from './contexts/DrawingToolContext'
+import { ThemeContext } from './contexts/ThemeContext'
+import { initialTheme, persistTheme, type Theme } from './lib/theme'
 
 /** Sessions shown on first load. The full range stays one click away. */
 const DEFAULT_RANGE_MONTHS = 3
@@ -26,12 +28,36 @@ const DEFAULT_RANGE_MONTHS = 3
 export default function App() {
   const { state, reload } = useAsync(fetchSessionBounds, [])
 
+  // Lazily initialised so the stored preference (or the OS setting) is read
+  // once, not on every render.
+  const [theme, setTheme] = useState<Theme>(initialTheme)
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => {
+      const next = current === 'dark' ? 'light' : 'dark'
+      persistTheme(next)
+      return next
+    })
+  }, [])
+
+  // The light palette is keyed off this attribute (see index.css). Set on the
+  // document element rather than a wrapper so it also covers the body
+  // background, which sits outside the React tree.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
+  const themeState = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme])
+
   return (
+    <ThemeContext.Provider value={themeState}>
     <div className="min-h-full bg-zinc-950">
       <div className="mx-auto max-w-7xl px-4 py-8">
         <Header
           projectRef={supabaseProjectRef}
           totalSessions={state.status === 'ready' && state.data ? state.data.total : null}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
 
         <main className="mt-6">
@@ -51,12 +77,13 @@ export default function App() {
 
         <footer className="mt-8 border-t border-zinc-900 pt-4">
           <p className="font-mono text-xs text-zinc-600">
-            Phase 8 — draw tools with magnet snap, measurement tools, and drag-to-edit.
-            Read-only: this dashboard never writes to Supabase.
+            Draw tools, magnet snap, measurement tools, drag-to-edit, and light/dark
+            themes. Read-only: this dashboard never writes to Supabase.
           </p>
         </footer>
       </div>
     </div>
+    </ThemeContext.Provider>
   )
 }
 
@@ -310,9 +337,13 @@ function SessionOverlays({
 function Header({
   projectRef,
   totalSessions,
+  theme,
+  onToggleTheme,
 }: {
   projectRef: string
   totalSessions: number | null
+  theme: Theme
+  onToggleTheme: () => void
 }) {
   return (
     <header className="border-b border-zinc-800 pb-4">
@@ -333,6 +364,21 @@ function Header({
             {totalSessions === null ? '—' : formatCount(totalSessions)}
           </Stat>
           <Stat label="Supabase project">{projectRef || '—'}</Stat>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={theme === 'light'}
+            aria-label="Light theme"
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            onClick={onToggleTheme}
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-zinc-700 px-2 font-mono text-xs text-zinc-300 transition hover:border-amber-600 hover:text-amber-400"
+          >
+            <span aria-hidden="true" className="text-sm leading-none">
+              {theme === 'dark' ? '☀' : '☾'}
+            </span>
+            <span className="hidden sm:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          </button>
         </dl>
       </div>
     </header>

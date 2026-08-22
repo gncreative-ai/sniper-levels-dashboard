@@ -25,6 +25,7 @@ import {
   type DrawingTool,
   type Point,
 } from './drawings'
+import { DRAWING_UI, type Theme } from './theme'
 
 /**
  * Renders drawings (spec §4.5) directly into a chart's own canvas stack via
@@ -69,9 +70,8 @@ function measurementColors(drawing: Drawing): { stroke: string; fill: string } {
   return drawing.points[1]!.price >= drawing.points[0]!.price ? UP : DOWN
 }
 
-const SELECTED_STROKE = '#f4f4f5'
-const PENDING_STROKE = 'rgba(244, 244, 245, 0.55)'
-const LABEL_BG = 'rgba(24, 24, 27, 0.85)'
+// Selection highlight, in-progress preview and label plate all come from the
+// active theme: a near-white selection stroke is invisible on a light chart.
 
 export interface PendingDrawing {
   tool: DrawingTool
@@ -101,6 +101,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   private drawings: Drawing[] = []
   private selectedId: string | null = null
   private pending: PendingDrawing | null = null
+  private theme: Theme = 'dark'
 
   private readonly view = new DrawingsPaneView(this)
 
@@ -133,6 +134,16 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   setPending(pending: PendingDrawing | null): void {
     this.pending = pending
     this.requestUpdate?.()
+  }
+
+  setTheme(theme: Theme): void {
+    this.theme = theme
+    this.requestUpdate?.()
+  }
+
+  /** Theme-dependent colours for the chrome around a drawing. */
+  ui(): (typeof DRAWING_UI)[Theme] {
+    return DRAWING_UI[this.theme]
   }
 
   /** Pixel position of a (time, price) point, or null if it has no visible coordinate right now. */
@@ -307,7 +318,7 @@ class DrawingsPaneView implements IPrimitivePaneView {
     const pts = pixels as PixelPoint[]
 
     const style = measurementColors(drawing)
-    const stroke = selected ? SELECTED_STROKE : style.stroke
+    const stroke = selected ? this.primitive.ui().selected : style.stroke
 
     ctx.save()
     ctx.lineWidth = selected ? 2 : 1.5
@@ -354,7 +365,7 @@ class DrawingsPaneView implements IPrimitivePaneView {
     drawArrowHead(ctx, midX, b.y, b.y >= a.y ? 1 : -1, stroke)
 
     const label = formatPriceDelta(drawing.points[0]!.price, drawing.points[1]!.price)
-    drawLabel(ctx, label, midX, (a.y + b.y) / 2, stroke)
+    drawLabel(ctx, label, midX, (a.y + b.y) / 2, stroke, this.primitive.ui().labelBackground)
   }
 
   /** A box spanning the two anchors, with a horizontal arrow and the span as text. */
@@ -378,7 +389,7 @@ class DrawingsPaneView implements IPrimitivePaneView {
     const label =
       bars === null ? formatBarSpan(0, seconds) : formatBarSpan(bars, seconds)
 
-    drawLabel(ctx, label, (a.x + b.x) / 2, midY, stroke)
+    drawLabel(ctx, label, (a.x + b.x) / 2, midY, stroke, this.primitive.ui().labelBackground)
   }
 
   private drawFib(
@@ -417,9 +428,11 @@ class DrawingsPaneView implements IPrimitivePaneView {
 
     const cursor = pending.cursor ? this.primitive.toPixel(pending.cursor) : null
 
+    const pendingStroke = this.primitive.ui().pending
+
     ctx.save()
     ctx.lineWidth = 1.5
-    ctx.strokeStyle = PENDING_STROKE
+    ctx.strokeStyle = pendingStroke
     ctx.setLineDash([4, 4])
 
     if (pending.tool === 'ray') {
@@ -437,7 +450,7 @@ class DrawingsPaneView implements IPrimitivePaneView {
     }
 
     ctx.setLineDash([])
-    drawHandles(ctx, cursor ? [anchor, cursor] : [anchor], PENDING_STROKE, false)
+    drawHandles(ctx, cursor ? [anchor, cursor] : [anchor], pendingStroke, false)
     ctx.restore()
   }
 }
@@ -497,6 +510,7 @@ function drawLabel(
   centerX: number,
   centerY: number,
   color: string,
+  background: string,
 ): void {
   ctx.save()
   ctx.font = '10px ui-monospace, monospace'
@@ -507,7 +521,7 @@ function drawLabel(
   const padX = 4
   const height = 14
 
-  ctx.fillStyle = LABEL_BG
+  ctx.fillStyle = background
   ctx.fillRect(centerX - width / 2 - padX, centerY - height / 2, width + padX * 2, height)
 
   ctx.fillStyle = color

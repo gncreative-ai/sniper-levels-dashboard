@@ -1,3 +1,4 @@
+import { LINE_COLORS, themed, type Theme, type ThemedColor } from './theme'
 import type { DailySetup } from './types'
 
 /**
@@ -13,10 +14,15 @@ import type { DailySetup } from './types'
  * sniper point and null bands; substituting a number there would invent a price
  * level that never existed.
  *
- * Palette follows spec §5.3: blue for prior-day references, amber for ATM,
- * green and red for the upper and lower bands. The prior-day trio shares the
- * blue family and separates by shade and dash pattern rather than by hue, so
- * the grouping stays readable.
+ * Palette matches the TradingView charts this dashboard mirrors (see
+ * lib/theme.ts): a cyan family for the prior-day references, separated by shade
+ * and dash pattern rather than hue so the grouping stays readable; a black/white
+ * contrast line for ATM spot; red for the upper band and teal for the lower.
+ *
+ * The band colours are not a "green up, red down" mistake. The upper band is
+ * where PE holders book profit and CE holders panic, so it is the red level,
+ * and the lower band is its mirror — which is what the reference charts label
+ * them.
  */
 
 export type OverlayId =
@@ -35,7 +41,8 @@ export interface OverlayDefinition {
   label: string
   /** Drawn against the line on the price axis — kept short to fit. */
   title: string
-  color: string
+  /** Only the ATM line actually differs between themes; the rest repeat. */
+  color: ThemedColor
   style: OverlayStyle
   value: (setup: DailySetup) => number | null
 }
@@ -45,7 +52,7 @@ export const OVERLAY_DEFINITIONS: readonly OverlayDefinition[] = [
     id: 'prevClose',
     label: 'Prev Close',
     title: 'P.Close',
-    color: '#60a5fa',
+    color: LINE_COLORS.prevClose,
     style: 'solid',
     value: (setup) => setup.prevClose,
   },
@@ -53,7 +60,7 @@ export const OVERLAY_DEFINITIONS: readonly OverlayDefinition[] = [
     id: 'prevHigh',
     label: 'Prev High',
     title: 'P.High',
-    color: '#93c5fd',
+    color: LINE_COLORS.prevHigh,
     style: 'dashed',
     value: (setup) => setup.prevHigh,
   },
@@ -61,7 +68,7 @@ export const OVERLAY_DEFINITIONS: readonly OverlayDefinition[] = [
     id: 'prevLow',
     label: 'Prev Low',
     title: 'P.Low',
-    color: '#3b82f6',
+    color: LINE_COLORS.prevLow,
     style: 'dotted',
     value: (setup) => setup.prevLow,
   },
@@ -69,24 +76,24 @@ export const OVERLAY_DEFINITIONS: readonly OverlayDefinition[] = [
     id: 'atm',
     label: 'ATM',
     title: 'ATM',
-    color: '#fbbf24',
-    style: 'dashed',
+    color: LINE_COLORS.contrast,
+    style: 'solid',
     value: (setup) => setup.atmCenter,
   },
   {
     id: 'sniperUpper',
     label: 'Upper Band',
     title: 'Upper',
-    color: '#10b981',
-    style: 'dashed',
+    color: LINE_COLORS.sniperUpper,
+    style: 'solid',
     value: (setup) => setup.spotSniperUpper,
   },
   {
     id: 'sniperLower',
     label: 'Lower Band',
     title: 'Lower',
-    color: '#ef4444',
-    style: 'dashed',
+    color: LINE_COLORS.sniperLower,
+    style: 'solid',
     value: (setup) => setup.spotSniperLower,
   },
 ] as const
@@ -106,6 +113,11 @@ export const DEFAULT_OVERLAY_VISIBILITY: OverlayVisibility = {
 /** A line ready to draw: definition plus a resolved, non-null price. */
 export interface ResolvedOverlay extends OverlayDefinition {
   price: number
+}
+
+/** The colour this overlay draws in under the active theme. */
+export function overlayColor(definition: OverlayDefinition, theme: Theme): string {
+  return themed(definition.color, theme)
 }
 
 /**

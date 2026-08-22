@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CandlestickSeries,
   createChart,
@@ -19,6 +19,8 @@ import {
   makeAutoscaleProvider,
 } from '../lib/chartTheme'
 import type { OverlayStyle } from '../lib/overlays'
+import { LINE_COLORS, themed } from '../lib/theme'
+import { ThemeContext } from '../contexts/ThemeContext'
 
 /**
  * One option leg's premium chart: previous session and active session in a
@@ -43,10 +45,18 @@ interface LegLine {
 }
 
 export function LegChart({ leg }: { leg: LegSeries }) {
+  const { theme } = useContext(ThemeContext)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const disposedRef = useRef(false)
+
+  // Read by the create-once effect so a theme change repaints rather than
+  // rebuilding the chart, which would throw away zoom and pan.
+  const themeRef = useRef(theme)
+  useEffect(() => {
+    themeRef.current = theme
+  }, [theme])
 
   /** X position of the first bar of the active session, in container pixels. */
   const [dividerX, setDividerX] = useState<number | null>(null)
@@ -73,18 +83,35 @@ export function LegChart({ leg }: { leg: LegSeries }) {
 
     // This contract's own prior-session values, derived from the prev-day bars.
     if (leg.prevClose !== null) {
-      result.push({ price: leg.prevClose, color: '#60a5fa', style: 'solid', title: 'P.Close' })
+      result.push({
+        price: leg.prevClose,
+        color: themed(LINE_COLORS.prevClose, theme),
+        style: 'solid',
+        title: 'P.Close',
+      })
     }
     if (leg.prevHigh !== null) {
-      result.push({ price: leg.prevHigh, color: '#93c5fd', style: 'dashed', title: 'P.High' })
+      result.push({
+        price: leg.prevHigh,
+        color: themed(LINE_COLORS.prevHigh, theme),
+        style: 'solid',
+        title: 'P.High',
+      })
     }
-    // ATM legs only, and null when the batch has no sniper point.
+    // ATM legs only, and null when the batch has no sniper point. Drawn in the
+    // contrast colour — black on light, white on dark — so it reads as the
+    // neutral reference against either background.
     if (leg.sniperLevel !== null) {
-      result.push({ price: leg.sniperLevel, color: '#fbbf24', style: 'dashed', title: 'Sniper' })
+      result.push({
+        price: leg.sniperLevel,
+        color: themed(LINE_COLORS.contrast, theme),
+        style: 'solid',
+        title: 'Sniper',
+      })
     }
 
     return result
-  }, [leg.prevClose, leg.prevHigh, leg.sniperLevel])
+  }, [leg.prevClose, leg.prevHigh, leg.sniperLevel, theme])
 
   const repositionDivider = useCallback(() => {
     const chart = chartRef.current
@@ -101,10 +128,10 @@ export function LegChart({ leg }: { leg: LegSeries }) {
     const container = containerRef.current
     if (!container) return
 
-    const base = baseChartOptions(9)
+    const base = baseChartOptions(9, themeRef.current)
     const chart = createChart(container, {
       ...base,
-      timeScale: { ...base.timeScale, rightOffset: 1, barSpacing: 3 },
+      timeScale: { ...base.timeScale, barSpacing: 3 },
       rightPriceScale: { ...base.rightPriceScale, scaleMargins: { top: 0.12, bottom: 0.12 } },
     })
     const series = chart.addSeries(CandlestickSeries, CANDLE_SERIES_OPTIONS)
@@ -130,6 +157,21 @@ export function LegChart({ leg }: { leg: LegSeries }) {
     chart.timeScale().fitContent()
     repositionDivider()
   }, [data, repositionDivider])
+
+  // Repaint the chart chrome on a theme change — canvas cannot inherit CSS.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+
+    const base = baseChartOptions(9, theme)
+    chart.applyOptions({
+      layout: base.layout,
+      grid: base.grid,
+      rightPriceScale: { borderColor: base.rightPriceScale?.borderColor },
+      timeScale: { borderColor: base.timeScale?.borderColor },
+      crosshair: base.crosshair,
+    })
+  }, [theme])
 
   // The divider is an HTML overlay because Lightweight Charts has no vertical
   // line primitive. It therefore has to be re-placed whenever the time scale

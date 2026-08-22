@@ -138,6 +138,28 @@ can be selected, dragged to move, reshaped by its anchor handles, and deleted.
 Magnet snapping is a toolbar toggle. Still deliberately out of scope: persistence
 across a reload, undo/redo, and per-drawing style options.
 
+### Theming
+
+Light and dark, toggled from the header and remembered in `localStorage`; the
+first visit follows the OS `prefers-color-scheme`. Reference-line colours are
+matched to the TradingView charts this dashboard mirrors — cyan for the
+prior-day levels, red for the upper band ("PE profit booking / CE panic") and
+teal for the lower. One line inverts with the theme: ATM spot on the main chart
+and the sniper point on the ATM legs are drawn black on light and white on dark.
+
+The surrounding UI is themed by a palette swap in `src/index.css` rather than
+per-component variants — the reasoning is in a comment there, and it matters if
+you add UI: pick a zinc shade by how far it should sit from the background, not
+by whether it "looks dark".
+
+### Zoom and pan
+
+The time scale edges are deliberately not fixed, so a chart can be zoomed out
+past fit-to-screen and panned into empty space either side of the data, the way
+TradingView behaves. Phase 7 originally pinned the range to the data; that made
+fit-to-screen a hard zoom-out floor, which is worse in practice than being able
+to scroll the data off-screen.
+
 ### Data access layer
 
 All Supabase reads go through `src/lib/`, not through components:
@@ -156,5 +178,6 @@ All Supabase reads go through `src/lib/`, not through components:
 | `chartTheme.ts` | Shared chart appearance and the overlay autoscale provider, so all five charts stay one panel. |
 | `overlays.ts` | The six overlay lines defined once — colour, style, and where each value comes from. Null means draw nothing, never zero. |
 | `time.ts` | Instants vs. chart times. Lightweight Charts renders in UTC, so values are shifted by IST's fixed +05:30 for display. Read the module comment before touching it. |
+| `theme.ts` | Light/dark palettes. Charts paint to a canvas and cannot inherit CSS, so every chart colour is handed over explicitly and re-applied on a theme change. |
 | `drawings.ts` | Draw-tool types and pure geometry — segment/ray/rectangle distance, fib level pricing, magnet snapping, and measurement formatting. No chart or React dependency, so it's the unit-testable core of Phase 8. |
 | `drawingPrimitive.ts` | `DrawingsPrimitive` — renders drawings into a chart's own canvas via the Series Primitives API, and answers hit-tests for click-to-select and drag-to-edit. One instance per chart. |

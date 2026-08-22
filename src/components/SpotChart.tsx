@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useContext, useEffect, useMemo, useRef } from 'react'
 import {
   CandlestickSeries,
   createChart,
@@ -10,7 +10,8 @@ import {
 } from 'lightweight-charts'
 import type { CalendarDay } from '../lib/calendar'
 import type { SpotCandle5m } from '../lib/types'
-import type { ResolvedOverlay } from '../lib/overlays'
+import { overlayColor, type ResolvedOverlay } from '../lib/overlays'
+import { ThemeContext } from '../contexts/ThemeContext'
 import { toChartTime } from '../lib/time'
 import { useChartSync } from '../hooks/useChartSync'
 import { useDrawingTools } from '../hooks/useDrawingTools'
@@ -45,6 +46,7 @@ export function SpotChart({
    */
   sessionDate: CalendarDay
 }) {
+  const { theme } = useContext(ThemeContext)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -54,6 +56,14 @@ export function SpotChart({
   // price line from a series that no longer exists throws, so that cleanup
   // checks this first.
   const disposedRef = useRef(false)
+
+  // The chart is created once and must not be rebuilt on a theme change (that
+  // would discard zoom and pan), so the creation effect reads the theme through
+  // a ref and a separate effect re-applies colours afterwards.
+  const themeRef = useRef(theme)
+  useEffect(() => {
+    themeRef.current = theme
+  }, [theme])
 
   const data = useMemo<CandlestickData<UTCTimestamp>[]>(
     () =>
@@ -73,9 +83,10 @@ export function SpotChart({
     const container = containerRef.current
     if (!container) return
 
+    const base = baseChartOptions(11, themeRef.current)
     const chart = createChart(container, {
-      ...baseChartOptions(11),
-      timeScale: { ...baseChartOptions(11).timeScale, rightOffset: 2, barSpacing: 8 },
+      ...base,
+      timeScale: { ...base.timeScale, barSpacing: 8 },
     })
     const series = chart.addSeries(CandlestickSeries, CANDLE_SERIES_OPTIONS)
 
@@ -103,6 +114,23 @@ export function SpotChart({
     chart.timeScale().fitContent()
   }, [data])
 
+  // Repaint the chart chrome when the theme changes. Lightweight Charts draws
+  // to a canvas and cannot inherit CSS, so every colour has to be handed back
+  // to it explicitly.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+
+    const base = baseChartOptions(11, theme)
+    chart.applyOptions({
+      layout: base.layout,
+      grid: base.grid,
+      rightPriceScale: { borderColor: base.rightPriceScale?.borderColor },
+      timeScale: { borderColor: base.timeScale?.borderColor },
+      crosshair: base.crosshair,
+    })
+  }, [theme])
+
   // Defined after the creation effect so the series already exists on mount.
   // Torn down and rebuilt wholesale rather than diffed: six lines at most.
   useEffect(() => {
@@ -118,7 +146,7 @@ export function SpotChart({
     const lines: IPriceLine[] = overlays.map((overlay) =>
       series.createPriceLine({
         price: overlay.price,
-        color: overlay.color,
+        color: overlayColor(overlay, theme),
         lineWidth: 1,
         lineStyle: LINE_STYLES[overlay.style],
         axisLabelVisible: true,
@@ -130,7 +158,7 @@ export function SpotChart({
       if (disposedRef.current) return
       for (const line of lines) series.removePriceLine(line)
     }
-  }, [overlays])
+  }, [overlays, theme])
 
   // Declared after the chart-creation effect above: React runs effects in
   // declaration order, so chartRef/seriesRef are already populated by the time
