@@ -18,6 +18,7 @@ import { useDrawingTools } from '../hooks/useDrawingTools'
 import { DrawingSettingsDialog } from './DrawingSettingsDialog'
 import {
   CANDLE_SERIES_OPTIONS,
+  LEVEL_LINE_WIDTH,
   LINE_STYLES,
   baseChartOptions,
   makeAutoscaleProvider,
@@ -84,7 +85,7 @@ export function SpotChart({
     const container = containerRef.current
     if (!container) return
 
-    const base = baseChartOptions(11, themeRef.current)
+    const base = baseChartOptions(12, themeRef.current)
     const chart = createChart(container, {
       ...base,
       timeScale: { ...base.timeScale, barSpacing: 8 },
@@ -122,7 +123,7 @@ export function SpotChart({
     const chart = chartRef.current
     if (!chart) return
 
-    const base = baseChartOptions(11, theme)
+    const base = baseChartOptions(12, theme)
     chart.applyOptions({
       layout: base.layout,
       grid: base.grid,
@@ -148,7 +149,7 @@ export function SpotChart({
       series.createPriceLine({
         price: overlay.price,
         color: overlayColor(overlay, theme),
-        lineWidth: 1,
+        lineWidth: LEVEL_LINE_WIDTH,
         lineStyle: LINE_STYLES[overlay.style],
         axisLabelVisible: true,
         title: overlay.title,

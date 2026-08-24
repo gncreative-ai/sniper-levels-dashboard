@@ -41,7 +41,7 @@ export function ControlBar({
     <section className="flex flex-col gap-3 rounded-md border border-zinc-800 bg-zinc-900/30 px-4 py-3">
       <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wider text-zinc-600">ATM batch</span>
+          <span className="text-[11px] uppercase tracking-wider text-zinc-600">ATM batch</span>
           <div className="flex gap-1" role="group" aria-label="ATM batch">
             {ATM_BATCHES.map((option) => {
               const optionSetup = setup[option]
@@ -67,7 +67,7 @@ export function ControlBar({
                 >
                   {ATM_BATCH_LABELS[option]}
                   {optionSetup && (
-                    <span className="ml-1.5 text-[10px] text-zinc-500">
+                    <span className="ml-1.5 text-[11px] text-zinc-500">
                       {optionSetup.atmCenter}
                     </span>
                   )}
@@ -78,7 +78,7 @@ export function ControlBar({
         </div>
 
         <div className="flex min-w-0 flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wider text-zinc-600">Overlays</span>
+          <span className="text-[11px] uppercase tracking-wider text-zinc-600">Overlays</span>
           <div className="flex flex-wrap gap-1">
             {OVERLAY_DEFINITIONS.map((definition) => {
               const on = visibility[definition.id]
@@ -116,7 +116,7 @@ export function ControlBar({
                     {definition.label}
                   </span>
                   {on && active && !absent && (
-                    <span className="text-[10px] text-zinc-500">
+                    <span className="text-[11px] text-zinc-500">
                       {formatPrice(definition.value(active))}
                     </span>
                   )}
@@ -138,7 +138,7 @@ function BatchSummary({ batch, setup }: { batch: AtmBatch; setup: SessionSetup }
   if (!active) return null
 
   return (
-    <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-t border-zinc-800 pt-2 font-mono text-[11px]">
+    <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-t border-zinc-800 pt-2 font-mono text-[12px]">
       <Item label="ATM" value={formatPrice(active.atmCenter)} tone="amber" />
       <Item label="OTM CE" value={`${active.otmCeStrike} @ ${formatPrice(active.otmCeSettle)}`} />
       <Item label="OTM PE" value={`${active.otmPeStrike} @ ${formatPrice(active.otmPeSettle)}`} />
@@ -167,7 +167,7 @@ function Item({
 }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <dt className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</dt>
+      <dt className="text-[11px] uppercase tracking-wider text-zinc-600">{label}</dt>
       <dd className={tone === 'amber' ? 'text-amber-400' : 'text-zinc-300'}>{value}</dd>
     </div>
   )

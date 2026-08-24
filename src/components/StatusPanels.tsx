@@ -41,7 +41,7 @@ export function ErrorPanel({
               <summary className="cursor-pointer font-mono text-xs text-red-300/60 hover:text-red-300">
                 details
               </summary>
-              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-red-200/60">
+              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-red-200/60">
                 {error.detail}
               </pre>
             </details>

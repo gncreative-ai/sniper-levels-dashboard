@@ -54,6 +54,7 @@ export function useDrawingTools(
   const { theme } = useContext(ThemeContext)
   const toolState = useContext(DrawingToolContext)
   const activeTool = toolState?.activeTool ?? 'none'
+  const setActiveTool = toolState?.setActiveTool
   const magnet = toolState?.magnet ?? false
 
   const primitiveRef = useRef<DrawingsPrimitive | null>(null)
@@ -126,6 +127,11 @@ export function useDrawingTools(
   const updateDrawing = useCallback((id: string, patch: Partial<Drawing>) => {
     setDrawings((list) => list.map((d) => (d.id === id ? { ...d, ...patch } : d)))
   }, [])
+
+  const setActiveToolRef = useRef(setActiveTool)
+  useEffect(() => {
+    setActiveToolRef.current = setActiveTool
+  }, [setActiveTool])
 
   const dragRef = useRef<DragState | null>(null)
   /** A drag ends in a click event too; that click must not re-run selection. */
@@ -416,11 +422,29 @@ export function useDrawingTools(
       chart!.applyOptions({ handleScroll: true, handleScale: true })
     }
 
+    /**
+     * Right-click puts the cursor tool back.
+     *
+     * A drawing tool stays armed after it commits, so placing several in a row
+     * needs no re-click — but that leaves the chart armed, and the next stray
+     * click starts another drawing. Right-click is the standard way out in
+     * every charting tool, and it costs nothing to reach for.
+     *
+     * The browser menu is suppressed because it would otherwise open over the
+     * chart on the same gesture.
+     */
+    function onContextMenu(event: MouseEvent) {
+      event.preventDefault()
+      setActiveToolRef.current?.('none')
+    }
+
+    element.addEventListener('contextmenu', onContextMenu, true)
     element.addEventListener('mousedown', onMouseDown, true)
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
 
     return () => {
+      element.removeEventListener('contextmenu', onContextMenu, true)
       element.removeEventListener('mousedown', onMouseDown, true)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)

@@ -15,6 +15,7 @@ import { useDrawingTools } from '../hooks/useDrawingTools'
 import { DrawingSettingsDialog } from './DrawingSettingsDialog'
 import {
   CANDLE_SERIES_OPTIONS,
+  LEVEL_LINE_WIDTH,
   LINE_STYLES,
   baseChartOptions,
   makeAutoscaleProvider,
@@ -129,7 +130,7 @@ export function LegChart({ leg }: { leg: LegSeries }) {
     const container = containerRef.current
     if (!container) return
 
-    const base = baseChartOptions(9, themeRef.current)
+    const base = baseChartOptions(10, themeRef.current)
     const chart = createChart(container, {
       ...base,
       timeScale: { ...base.timeScale, barSpacing: 3 },
@@ -164,7 +165,7 @@ export function LegChart({ leg }: { leg: LegSeries }) {
     const chart = chartRef.current
     if (!chart) return
 
-    const base = baseChartOptions(9, theme)
+    const base = baseChartOptions(10, theme)
     chart.applyOptions({
       layout: base.layout,
       grid: base.grid,
@@ -206,7 +207,7 @@ export function LegChart({ leg }: { leg: LegSeries }) {
       series.createPriceLine({
         price: line.price,
         color: line.color,
-        lineWidth: 1,
+        lineWidth: LEVEL_LINE_WIDTH,
         lineStyle: LINE_STYLES[line.style],
         axisLabelVisible: false,
         title: line.title,

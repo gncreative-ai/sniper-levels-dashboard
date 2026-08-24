@@ -44,12 +44,12 @@ function LegCell({ leg }: { leg: LegSeries }) {
           <h3 className="font-mono text-xs font-semibold text-amber-400">
             {LEG_ROLE_LABELS[leg.role]}
           </h3>
-          <span className="font-mono text-[11px] text-zinc-400">
+          <span className="font-mono text-[12px] text-zinc-400">
             {leg.ref.strike} {leg.ref.optionType}
           </span>
         </div>
 
-        <dl className="flex flex-wrap items-baseline gap-x-3 font-mono text-[10px]">
+        <dl className="flex flex-wrap items-baseline gap-x-3 font-mono text-[11px]">
           <Level label="P.Close" value={leg.prevClose} color={themed(LINE_COLORS.prevClose, theme)} />
           <Level label="P.High" value={leg.prevHigh} color={themed(LINE_COLORS.prevHigh, theme)} />
           {/* Only the ATM legs carry a sniper level (spec §4.4). */}
@@ -65,7 +65,7 @@ function LegCell({ leg }: { leg: LegSeries }) {
 
       {totalBars === 0 ? (
         <div className="flex h-[190px] items-center justify-center px-3 text-center sm:h-[230px]">
-          <p className="font-mono text-[11px] text-zinc-500">
+          <p className="font-mono text-[12px] text-zinc-500">
             No premium bars stored for {leg.ref.instrumentKey}.
           </p>
         </div>
@@ -75,7 +75,7 @@ function LegCell({ leg }: { leg: LegSeries }) {
         </div>
       )}
 
-      <footer className="flex flex-wrap items-center justify-between gap-x-3 border-t border-zinc-800 px-3 py-1.5 font-mono text-[10px] text-zinc-600">
+      <footer className="flex flex-wrap items-center justify-between gap-x-3 border-t border-zinc-800 px-3 py-1.5 font-mono text-[11px] text-zinc-600">
         <span>
           <span className="text-zinc-500">{formatCount(leg.prevBars.length)}</span> prev ·{' '}
           <span className="text-zinc-500">{formatCount(leg.todayBars.length)}</span> today

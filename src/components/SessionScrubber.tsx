@@ -96,7 +96,7 @@ export function SessionScrubber({
 /** Explains the chip markings, which are otherwise just coloured hairlines. */
 function Legend({ withoutSetup }: { withoutSetup: number }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 font-mono text-[10px] text-zinc-600">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 font-mono text-[11px] text-zinc-600">
       <span className="flex items-center gap-1.5">
         <span aria-hidden="true" className="h-px w-3 bg-emerald-500/70" />
         close ≥ open
@@ -125,10 +125,10 @@ function MonthDivider({ date }: { date: CalendarDay }) {
       aria-hidden="true"
       className="mx-1 flex flex-col items-center justify-center border-l border-zinc-700 pl-1.5"
     >
-      <span className="font-mono text-[9px] uppercase leading-tight tracking-wider text-zinc-500">
+      <span className="font-mono text-[10px] uppercase leading-tight tracking-wider text-zinc-500">
         {month}
       </span>
-      <span className="font-mono text-[9px] leading-tight text-zinc-700">
+      <span className="font-mono text-[10px] leading-tight text-zinc-700">
         {year?.slice(2)}
       </span>
     </div>
@@ -172,7 +172,7 @@ function SessionChip({
       >
         {day}
       </span>
-      <span className="mt-0.5 font-mono text-[8px] uppercase leading-none text-zinc-600">
+      <span className="mt-0.5 font-mono text-[9px] uppercase leading-none text-zinc-600">
         {formatSessionWeekday(session.candleDate).slice(0, 2)}
       </span>
 

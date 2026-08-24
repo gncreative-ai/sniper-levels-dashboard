@@ -78,7 +78,7 @@ export function SpotChartPanel({
       {/* Absent overlays are stated rather than silently missing: a toggle that
           is on but draws nothing would otherwise look like a broken switch. */}
       {absent.length > 0 && (
-        <p className="font-mono text-[11px] text-zinc-500">
+        <p className="font-mono text-[12px] text-zinc-500">
           Not drawn for this batch — {absent.map((overlay) => overlay.label).join(', ')}: no value
           in the source data. Shown as absent rather than zero.
         </p>
@@ -87,7 +87,7 @@ export function SpotChartPanel({
       {/* A short session is real data, not a gap — say so rather than letting a
           sparse chart read as broken. The Diwali Muhurat session has 12 bars. */}
       {candlesState.status === 'ready' && candles.length > 0 && candles.length < 60 && (
-        <p className="font-mono text-[11px] text-zinc-500">
+        <p className="font-mono text-[12px] text-zinc-500">
           Short session — {formatCount(candles.length)} bars instead of the usual ~75. This is real
           market data, not missing bars.
         </p>

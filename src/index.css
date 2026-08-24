@@ -2,6 +2,22 @@
 
 @theme {
   --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /*
+   * The whole type scale, one step larger than Tailwind's defaults
+   * (12/14/16/18px -> 13/15/17/19px). Overriding the scale rather than editing
+   * class names means every existing `text-xs` moves together; the handful of
+   * arbitrary `text-[Npx]` sizes in the components were bumped by the same one
+   * step, since those do not read from these variables.
+   */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.625rem;
+  --text-lg: 1.1875rem;
+  --text-lg--line-height: 1.75rem;
 }
 
 /*

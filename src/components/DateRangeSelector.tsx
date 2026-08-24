@@ -60,7 +60,7 @@ export function DateRangeSelector({
         <Field label="To" value={range.to} bounds={bounds} onChange={setTo} />
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wider text-zinc-600">Presets</span>
+          <span className="text-[11px] uppercase tracking-wider text-zinc-600">Presets</span>
           <div className="flex flex-wrap gap-1">
             {PRESET_MONTHS.map((months) => (
               <button
@@ -87,7 +87,7 @@ export function DateRangeSelector({
           </div>
         </div>
 
-        <p className="ml-auto font-mono text-[11px] text-zinc-600">
+        <p className="ml-auto font-mono text-[12px] text-zinc-600">
           Data spans {formatSessionDate(bounds.first)} → {formatSessionDate(bounds.last)}
         </p>
       </div>
@@ -108,7 +108,7 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-zinc-600">{label}</span>
       <input
         type="date"
         value={value}
