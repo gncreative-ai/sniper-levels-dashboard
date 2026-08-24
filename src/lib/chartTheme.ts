@@ -26,6 +26,15 @@ export const CHART_COLORS = {
 export const MONO_FONT =
   'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace'
 
+/**
+ * Stroke width for the reference levels (overlays on spot, prev-close/high and
+ * the sniper point on the legs).
+ *
+ * One definition for all five charts so they cannot drift apart. Lightweight
+ * Charts types this as 1 | 2 | 3 | 4, so it is not a free number.
+ */
+export const LEVEL_LINE_WIDTH = 2
+
 export const LINE_STYLES: Record<OverlayStyle, LineStyle> = {
   solid: LineStyle.Solid,
   dashed: LineStyle.Dashed,

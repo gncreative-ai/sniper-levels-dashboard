@@ -135,7 +135,9 @@ Data pipeline: complete and validated. Dashboard: in development — see the pha
 Draw tools cover trend line, horizontal ray, rectangle, fib retracement, and the
 two measurement tools (price range, date range), on all five charts. A drawing
 can be selected, dragged to move, reshaped by its anchor handles, and deleted.
-Magnet snapping is a toolbar toggle.
+Magnet snapping is a toolbar toggle, and right-clicking a chart puts the cursor
+tool back — a drawing tool stays armed after it commits, so placing several in a
+row needs no re-click, and right-click is the way out.
 
 Each drawing has its own settings, opened by double-clicking it or by the gear
 that appears beside the selection: colour, opacity, thickness, line style, a
@@ -150,6 +152,16 @@ picked from the chart's own bars rather than typed: anchors are quantised to
 bars anyway, so a free-text timestamp could only ever be rounded to one of them.
 
 Still deliberately out of scope: persistence across a reload, and undo/redo.
+
+### Layout and type
+
+The page is full width rather than a centred column — on a laptop the old
+`max-w-7xl` left large empty gutters, and the five charts benefit most from
+every pixel. The type scale is one step above Tailwind's defaults, set by
+overriding `--text-*` in `src/index.css` so every existing `text-xs` moves
+together. The handful of arbitrary `text-[Npx]` sizes were bumped by the same
+step, since those do not read from those variables — if you add one, match the
+scale rather than the old numbers.
 
 ### Theming
 

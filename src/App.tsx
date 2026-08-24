@@ -81,7 +81,10 @@ export default function App() {
           rather than to the session content: the floating bar sits above the
           header too, so reserving it any lower would leave the title covered. */}
       <div
-        className="mx-auto max-w-7xl px-4 py-8"
+        // Full width rather than a centred max-w-7xl column: on a laptop that
+        // column left large empty gutters, and the five charts are the thing
+        // that benefits most from every pixel of width.
+        className="w-full px-5 py-8"
         style={
           orientation === 'horizontal'
             ? { paddingTop: TOOLBAR_CLEARANCE.horizontal }
@@ -392,7 +395,7 @@ function Header({
           <h1 className="text-base font-semibold tracking-tight text-zinc-100 sm:text-lg">
             Sniper Levels — Backtest Dashboard
           </h1>
-          <p className="mt-1 font-mono text-[11px] text-zinc-500 sm:text-xs">
+          <p className="mt-1 font-mono text-[12px] text-zinc-500 sm:text-xs">
             Nifty 50 weekly options · read-only visual inspection
           </p>
         </div>
@@ -428,7 +431,7 @@ function Header({
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0 text-left sm:text-right">
-      <dt className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</dt>
+      <dt className="text-[11px] uppercase tracking-wider text-zinc-600">{label}</dt>
       <dd className="break-all font-mono text-xs text-amber-400 sm:text-sm">{children}</dd>
     </div>
   )

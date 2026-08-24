@@ -133,7 +133,7 @@ function Tab({
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`rounded-t border-b-2 px-2 py-1 font-mono text-[11px] transition ${
+      className={`rounded-t border-b-2 px-2 py-1 font-mono text-[12px] transition ${
         active
           ? 'border-amber-500 text-amber-300'
           : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -222,7 +222,7 @@ function StyleTab({
               aria-label={name}
               aria-pressed={style.lineStyle === name}
               onClick={() => onChange({ lineStyle: name as LineStyleName })}
-              className={`h-7 flex-1 rounded border font-mono text-[10px] capitalize transition ${
+              className={`h-7 flex-1 rounded border font-mono text-[11px] capitalize transition ${
                 style.lineStyle === name
                   ? 'border-amber-500 bg-amber-500/15 text-amber-300'
                   : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
@@ -234,7 +234,7 @@ function StyleTab({
         </div>
       </Row>
 
-      <label className="flex items-center gap-2 font-mono text-[11px] text-zinc-300">
+      <label className="flex items-center gap-2 font-mono text-[12px] text-zinc-300">
         <input
           type="checkbox"
           checked={style.priceLabel}
@@ -245,7 +245,7 @@ function StyleTab({
       </label>
 
       <div className="rounded border border-zinc-800 bg-zinc-950/60 px-2 py-2">
-        <span className="text-[10px] uppercase tracking-wider text-zinc-600">Preview</span>
+        <span className="text-[11px] uppercase tracking-wider text-zinc-600">Preview</span>
         <svg viewBox="0 0 200 20" className="mt-1 h-5 w-full" aria-hidden="true">
           <line
             x1="4"
@@ -281,7 +281,7 @@ function CoordinatesTab({
 
   if (bars.length === 0) {
     return (
-      <p className="font-mono text-[11px] text-zinc-500">
+      <p className="font-mono text-[12px] text-zinc-500">
         This chart has no bars, so there are no times to anchor to.
       </p>
     )
@@ -291,11 +291,11 @@ function CoordinatesTab({
     <>
       {drawing.points.map((point, index) => (
         <div key={index} className="flex flex-col gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-zinc-600">
+          <span className="text-[11px] uppercase tracking-wider text-zinc-600">
             {drawing.points.length === 1 ? 'Anchor' : `Point ${index + 1}`}
           </span>
 
-          <label className="flex items-center gap-2 font-mono text-[11px] text-zinc-400">
+          <label className="flex items-center gap-2 font-mono text-[12px] text-zinc-400">
             <span className="w-10 shrink-0">Time</span>
             <select
               aria-label={`Point ${index + 1} time`}
@@ -311,7 +311,7 @@ function CoordinatesTab({
             </select>
           </label>
 
-          <label className="flex items-center gap-2 font-mono text-[11px] text-zinc-400">
+          <label className="flex items-center gap-2 font-mono text-[12px] text-zinc-400">
             <span className="w-10 shrink-0">Price</span>
             <input
               type="number"
@@ -341,7 +341,7 @@ function barLabel(bar: Bar): string {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-zinc-600">{label}</span>
       {children}
     </div>
   )

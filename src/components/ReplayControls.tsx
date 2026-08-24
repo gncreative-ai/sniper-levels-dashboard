@@ -83,7 +83,7 @@ export function ReplayControls({
 
         <span
           className={`font-mono tabular-nums text-zinc-400 ${
-            vertical ? 'text-center text-[10px] leading-tight' : 'text-xs'
+            vertical ? 'text-center text-[11px] leading-tight' : 'text-xs'
           }`}
           aria-live="polite"
           aria-atomic="true"
@@ -153,7 +153,7 @@ function SpeedButton({
       disabled={disabled}
       onClick={onClick}
       className={`rounded border py-1 font-mono transition disabled:cursor-not-allowed disabled:opacity-30 ${
-        vertical ? 'w-7 text-[10px]' : 'px-1.5 text-[11px]'
+        vertical ? 'w-7 text-[11px]' : 'px-1.5 text-[12px]'
       } ${
         active
           ? 'border-amber-500 bg-amber-500/15 text-amber-300'

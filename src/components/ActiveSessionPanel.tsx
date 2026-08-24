@@ -33,7 +33,7 @@ export function ActiveSessionPanel({
                 {formatSessionWeekday(session.candleDate)}
               </span>
             </p>
-            <p className="font-mono text-[11px] text-zinc-600">
+            <p className="font-mono text-[12px] text-zinc-600">
               session {index + 1} / {total} in range
             </p>
           </div>
@@ -56,7 +56,7 @@ export function ActiveSessionPanel({
       </div>
 
       {!session.hasSetup && (
-        <p className="mt-3 border-t border-zinc-800 pt-2 font-mono text-[11px] text-zinc-500">
+        <p className="mt-3 border-t border-zinc-800 pt-2 font-mono text-[12px] text-zinc-500">
           No setup row for this session. Expected for the first day in the dataset (no prior
           session to derive one from) and for recent days whose weekly expiry has not passed yet.
         </p>
@@ -107,7 +107,7 @@ function Metric({
 
   return (
     <div className="text-right">
-      <dt className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</dt>
+      <dt className="text-[11px] uppercase tracking-wider text-zinc-600">{label}</dt>
       <dd className={`font-mono text-sm ${toneClass}`}>{value}</dd>
     </div>
   )
