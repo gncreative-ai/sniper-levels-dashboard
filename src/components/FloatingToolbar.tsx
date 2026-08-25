@@ -2,6 +2,8 @@ import { useContext } from 'react'
 import type { Replay } from '../hooks/useReplay'
 import { ToolbarContext } from '../contexts/ToolbarContext'
 import { ChartSyncContext } from '../contexts/ChartSyncContext'
+import { TimeframeContext } from '../contexts/TimeframeContext'
+import { TIMEFRAMES, TIMEFRAME_LABELS } from '../lib/timeframe'
 import type { ActiveDrawingTool } from '../contexts/DrawingToolContext'
 import { ReplayControls } from './ReplayControls'
 import { DrawToolbar } from './DrawToolbar'
@@ -36,6 +38,7 @@ export function FloatingToolbar({
 }) {
   const { orientation, toggleOrientation } = useContext(ToolbarContext)
   const chartSync = useContext(ChartSyncContext)
+  const { timeframe, setTimeframe } = useContext(TimeframeContext)
   const vertical = orientation === 'vertical'
 
   return (
@@ -71,6 +74,38 @@ export function FloatingToolbar({
       >
         <span aria-hidden="true">⤢</span>
       </button>
+
+      <Divider vertical={vertical} />
+
+      {/* Both timeframes cover the same two sessions — this is a change of
+          resolution, not of range. See lib/timeframe.ts. */}
+      <div
+        className={vertical ? 'flex flex-col gap-1' : 'flex gap-1'}
+        role="group"
+        aria-label="Timeframe"
+      >
+        {TIMEFRAMES.map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={timeframe === option}
+            aria-label={`${TIMEFRAME_LABELS[option]} candles`}
+            title={
+              option === '5m'
+                ? '5-minute candles'
+                : 'One candle per session — previous and current day'
+            }
+            onClick={() => setTimeframe(option)}
+            className={`h-7 shrink-0 rounded border px-1.5 font-mono text-[11px] transition ${
+              timeframe === option
+                ? 'border-amber-500 bg-amber-500/15 text-amber-300'
+                : 'border-zinc-700 text-zinc-300 hover:border-amber-600 hover:text-amber-400'
+            }`}
+          >
+            {TIMEFRAME_LABELS[option]}
+          </button>
+        ))}
+      </div>
 
       <Divider vertical={vertical} />
 

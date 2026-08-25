@@ -3,11 +3,13 @@ import {
   type AutoscaleInfo,
   type ChartOptions,
   type DeepPartial,
+  type IChartApi,
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { OverlayStyle } from './overlays'
 import { CHART_UI, type Theme } from './theme'
-import { formatIstTime, fromChartTime } from './time'
+import { formatIstDay, formatIstTime, fromChartTime } from './time'
+import type { Timeframe } from './timeframe'
 
 /**
  * Shared chart appearance and behaviour.
@@ -52,6 +54,9 @@ export const CANDLE_SERIES_OPTIONS = {
 
 const priceFormat = (price: number) =>
   price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/** Upper bound on bar spacing, so a single candle cannot fill the pane. */
+const MAX_BAR_SPACING = 60
 
 /**
  * Base options for every chart in the dashboard.
@@ -99,7 +104,7 @@ export function baseChartOptions(fontSize: number, theme: Theme): DeepPartial<Ch
       // off-screen, which is recoverable and is the normal trade every
       // charting tool makes.
       minBarSpacing: 0.5,
-      maxBarSpacing: 60,
+      maxBarSpacing: MAX_BAR_SPACING,
       fixLeftEdge: false,
       fixRightEdge: false,
       // Breathing room past the last bar, so the most recent candle is not
@@ -118,6 +123,66 @@ export function baseChartOptions(fontSize: number, theme: Theme): DeepPartial<Ch
     handleScroll: true,
     handleScale: true,
   }
+}
+
+/**
+ * The time-axis options that differ between timeframes.
+ *
+ * A daily candle is stamped at its session open, so the intraday formatter
+ * would label every daily tick '09:15' — technically true and completely
+ * useless. Applied as an option change rather than baked into the chart's
+ * creation options, because switching timeframe must not rebuild the chart
+ * (that would discard zoom, pan and any drawings on it).
+ */
+export function timeAxisOptions(timeframe: Timeframe): {
+  timeScale: DeepPartial<ChartOptions['timeScale']>
+  localization: DeepPartial<ChartOptions['localization']>
+} {
+  const daily = timeframe === '1D'
+
+  return {
+    timeScale: {
+      timeVisible: !daily,
+      tickMarkFormatter: (time: UTCTimestamp) =>
+        daily ? formatIstDay(fromChartTime(time)) : formatIstTime(fromChartTime(time)),
+    },
+    localization: {
+      timeFormatter: (time: UTCTimestamp) =>
+        daily
+          ? formatIstDay(fromChartTime(time))
+          : `${formatIstTime(fromChartTime(time))} IST`,
+    },
+  }
+}
+
+/**
+ * Frame a chart on its data — fit, then centre if the data cannot fill the pane.
+ *
+ * `fitContent` alone is not enough once `maxBarSpacing` binds. The daily
+ * timeframe has two candles; fitting them across a 1300px pane would want a bar
+ * spacing an order of magnitude past the cap, so the cap wins and the two
+ * candles end up huddled against the right edge with the rest of the pane
+ * empty, which reads as a broken chart rather than a zoomed-out one.
+ *
+ * So: fit first, and if the resulting range holds more slots than there are
+ * bars, recentre it on the data at whatever spacing the fit settled on. Same
+ * effect for any short session — the 12-bar Diwali Muhurat one included.
+ */
+export function frameContent(chart: IChartApi, barCount: number): void {
+  const timeScale = chart.timeScale()
+  timeScale.fitContent()
+
+  if (barCount === 0) return
+
+  // Predicted rather than measured. `fitContent` is deferred to the next paint,
+  // so reading the visible range back on this tick returns the OLD range — and
+  // acting on that reintroduces the previous timeframe's bar count, which is
+  // the bug this function exists to avoid.
+  const capacity = timeScale.width() / MAX_BAR_SPACING
+  if (capacity <= barCount) return
+
+  const centre = (barCount - 1) / 2
+  timeScale.setVisibleLogicalRange({ from: centre - capacity / 2, to: centre + capacity / 2 })
 }
 
 /**

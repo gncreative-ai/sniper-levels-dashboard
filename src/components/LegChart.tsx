@@ -18,11 +18,14 @@ import {
   LEVEL_LINE_WIDTH,
   LINE_STYLES,
   baseChartOptions,
+  frameContent,
   makeAutoscaleProvider,
+  timeAxisOptions,
 } from '../lib/chartTheme'
 import type { OverlayStyle } from '../lib/overlays'
 import { LINE_COLORS, themed } from '../lib/theme'
 import { ThemeContext } from '../contexts/ThemeContext'
+import { TimeframeContext } from '../contexts/TimeframeContext'
 
 /**
  * One option leg's premium chart: previous session and active session in a
@@ -48,6 +51,7 @@ interface LegLine {
 
 export function LegChart({ leg }: { leg: LegSeries }) {
   const { theme } = useContext(ThemeContext)
+  const { timeframe } = useContext(TimeframeContext)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -156,9 +160,15 @@ export function LegChart({ leg }: { leg: LegSeries }) {
     if (!series || !chart) return
 
     series.setData(data)
-    chart.timeScale().fitContent()
+    frameContent(chart, data.length)
     repositionDivider()
   }, [data, repositionDivider])
+
+  // Axis labelling follows the timeframe. Applied as an option change, never a
+  // rebuild: switching timeframe must keep this chart's zoom and drawings.
+  useEffect(() => {
+    chartRef.current?.applyOptions(timeAxisOptions(timeframe))
+  }, [timeframe])
 
   // Repaint the chart chrome on a theme change — canvas cannot inherit CSS.
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CandlestickSeries,
   createChart,
@@ -9,9 +9,10 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { CalendarDay } from '../lib/calendar'
-import type { SpotCandle5m } from '../lib/types'
+import type { ChartBar } from '../lib/timeframe'
 import { overlayColor, type ResolvedOverlay } from '../lib/overlays'
 import { ThemeContext } from '../contexts/ThemeContext'
+import { TimeframeContext } from '../contexts/TimeframeContext'
 import { toChartTime } from '../lib/time'
 import { useChartSync } from '../hooks/useChartSync'
 import { useDrawingTools } from '../hooks/useDrawingTools'
@@ -21,7 +22,9 @@ import {
   LEVEL_LINE_WIDTH,
   LINE_STYLES,
   baseChartOptions,
+  frameContent,
   makeAutoscaleProvider,
+  timeAxisOptions,
 } from '../lib/chartTheme'
 
 /**
@@ -35,10 +38,16 @@ import {
  */
 export function SpotChart({
   candles,
+  firstTodayEpoch,
   overlays,
   sessionDate,
 }: {
-  candles: SpotCandle5m[]
+  candles: ChartBar[]
+  /**
+   * Where the active session starts, for the shaded prev-session region.
+   * Null when this chart is showing one session only.
+   */
+  firstTodayEpoch: number | null
   overlays: ResolvedOverlay[]
   /**
    * Drawings reset when this changes. The spot chart's own data does not
@@ -49,6 +58,7 @@ export function SpotChart({
   sessionDate: CalendarDay
 }) {
   const { theme } = useContext(ThemeContext)
+  const { timeframe } = useContext(TimeframeContext)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -66,6 +76,25 @@ export function SpotChart({
   useEffect(() => {
     themeRef.current = theme
   }, [theme])
+
+  /** X position of the first bar of the active session, in container pixels. */
+  const [dividerX, setDividerX] = useState<number | null>(null)
+
+  const firstTodayTime = useMemo(
+    () => (firstTodayEpoch === null ? null : toChartTime(firstTodayEpoch)),
+    [firstTodayEpoch],
+  )
+
+  const repositionDivider = useCallback(() => {
+    const chart = chartRef.current
+    if (!chart || firstTodayTime === null) {
+      setDividerX(null)
+      return
+    }
+
+    const x = chart.timeScale().timeToCoordinate(firstTodayTime)
+    setDividerX(x === null ? null : x)
+  }, [firstTodayTime])
 
   const data = useMemo<CandlestickData<UTCTimestamp>[]>(
     () =>
@@ -113,8 +142,34 @@ export function SpotChart({
 
     // Each session is its own window, so frame it on every change rather than
     // leaving the viewport wherever the previous session left it.
-    chart.timeScale().fitContent()
-  }, [data])
+    frameContent(chart, data.length)
+    repositionDivider()
+  }, [data, repositionDivider])
+
+  // Axis labelling follows the timeframe. Applied as an option change, never a
+  // rebuild: switching timeframe must keep this chart's zoom and drawings.
+  useEffect(() => {
+    chartRef.current?.applyOptions(timeAxisOptions(timeframe))
+  }, [timeframe])
+
+  // The divider is an HTML overlay because Lightweight Charts has no vertical
+  // line primitive, so it has to be re-placed whenever the time scale moves.
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+
+    const timeScale = chart.timeScale()
+    timeScale.subscribeVisibleLogicalRangeChange(repositionDivider)
+
+    const observer = new ResizeObserver(repositionDivider)
+    if (containerRef.current) observer.observe(containerRef.current)
+
+    return () => {
+      observer.disconnect()
+      if (disposedRef.current) return
+      timeScale.unsubscribeVisibleLogicalRangeChange(repositionDivider)
+    }
+  }, [repositionDivider])
 
   // Repaint the chart chrome when the theme changes. Lightweight Charts draws
   // to a canvas and cannot inherit CSS, so every colour has to be handed back
@@ -171,7 +226,16 @@ export function SpotChart({
   const drawingTools = useDrawingTools(chartRef, seriesRef, data, sessionDate)
 
   return (
-    <>
+    <div className="relative h-full w-full">
+      {/* Shades the prior session, matching the leg charts. Sits under the
+          chart's own canvas so it never intercepts pointer events. */}
+      {dividerX !== null && dividerX > 0 && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 border-r border-dashed border-zinc-500/70 bg-zinc-100/[0.035]"
+          style={{ width: `${dividerX}px` }}
+        />
+      )}
       <div ref={containerRef} className="h-full w-full" />
       {drawingTools.editingDrawing && (
         <DrawingSettingsDialog
@@ -182,6 +246,6 @@ export function SpotChart({
           onDone={drawingTools.closeEditor}
         />
       )}
-    </>
+    </div>
   )
 }

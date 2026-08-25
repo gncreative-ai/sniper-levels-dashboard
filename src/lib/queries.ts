@@ -221,6 +221,68 @@ export async function fetchSpotCandles5m(sessionDate: CalendarDay): Promise<Spot
     .filter((candle): candle is SpotCandle5m => candle !== null)
 }
 
+/**
+ * 5-minute spot bars for several sessions at once, oldest first.
+ *
+ * Used to put the previous session on the main chart alongside the active one,
+ * the way the leg charts already do. One `in` filter rather than a request per
+ * day: it is the same index, and two round trips to draw one chart is two more
+ * than necessary.
+ */
+export async function fetchSpotCandles5mFor(
+  sessionDates: readonly CalendarDay[],
+): Promise<Map<CalendarDay, SpotCandle5m[]>> {
+  const dates = [...new Set(sessionDates)]
+  const byDate = new Map<CalendarDay, SpotCandle5m[]>()
+  if (dates.length === 0) return byDate
+
+  const { data, error } = await requireSupabase()
+    .from(TABLES.spotCandles5m)
+    .select('candle_date, candle_timestamp, open, high, low, close, volume')
+    .in('candle_date', dates)
+    .order('candle_timestamp', { ascending: true })
+
+  if (error) throw queryError(`Reading ${TABLES.spotCandles5m} for ${dates.join(', ')}`, error)
+
+  for (const raw of data ?? []) {
+    const row = raw as SpotCandle5mRow & { candle_date: string }
+    const candle = toSpotCandle5m(row)
+    if (!candle) continue
+
+    const existing = byDate.get(row.candle_date)
+    if (existing) existing.push(candle)
+    else byDate.set(row.candle_date, [candle])
+  }
+
+  return byDate
+}
+
+/**
+ * Official daily spot candles for specific sessions.
+ *
+ * The daily close here is the end-of-session official value, which is NOT the
+ * last 5-minute bar's close — see the README. That is exactly why the daily
+ * timeframe reads from this table rather than aggregating the intraday feed:
+ * the pipeline's prev_close, and therefore the sniper bands, are derived from
+ * these numbers.
+ */
+export async function fetchSpotCandlesDailyFor(
+  sessionDates: readonly CalendarDay[],
+): Promise<SpotCandleDaily[]> {
+  const dates = [...new Set(sessionDates)]
+  if (dates.length === 0) return []
+
+  const { data, error } = await requireSupabase()
+    .from(TABLES.spotCandlesDaily)
+    .select('candle_date, open, high, low, close, volume')
+    .in('candle_date', dates)
+    .order('candle_date', { ascending: true })
+
+  if (error) throw queryError(`Reading ${TABLES.spotCandlesDaily} for ${dates.join(', ')}`, error)
+
+  return (data ?? []).map((row) => toSpotCandleDaily(row as SpotCandleDailyRow))
+}
+
 function toDailySetup(row: DailySetupRow): DailySetup | null {
   // An unrecognised batch name means the pipeline's vocabulary has changed.
   // Skip it rather than coercing it into one of the three the UI knows about.
