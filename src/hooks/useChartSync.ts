@@ -21,11 +21,13 @@ export function useChartSync(
 ) {
   const group = useContext(ChartSyncContext)
   const priceMapRef = useRef<Map<UTCTimestamp, number>>(new Map())
+  const barCountRef = useRef(0)
 
   // Kept current without re-registering: mousemove fires far more often than
   // data changes, so lookups must be O(1) per event, not rebuilt on each one.
   useEffect(() => {
     priceMapRef.current = priceByTime(data)
+    barCountRef.current = data.length
   }, [data])
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export function useChartSync(
       chart,
       series,
       getPriceAt: (time) => priceMapRef.current.get(time),
+      barCount: () => barCountRef.current,
     })
     // chartRef/seriesRef are refs (stable identity, populated by the sibling
     // "create once" effect before this one runs); group is stable for the

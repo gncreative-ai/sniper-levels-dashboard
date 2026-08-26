@@ -1,13 +1,14 @@
 import { useMemo } from 'react'
 import { SpotChart } from './SpotChart'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './StatusPanels'
-import type { AsyncState } from '../hooks/useAsync'
 import type { CalendarDay } from '../lib/calendar'
 import { formatCount, formatSessionDate } from '../lib/format'
 import { barsUpTo } from '../lib/replay'
 import { formatIstTime } from '../lib/time'
 import { absentOverlays, resolveOverlays, type OverlayVisibility } from '../lib/overlays'
-import type { DailySetup, SpotCandle5m } from '../lib/types'
+import type { DailySetup } from '../lib/types'
+import type { SpotSeries } from '../lib/spot'
+import { TIMEFRAME_LABELS, type Timeframe } from '../lib/timeframe'
 
 /**
  * Renders the active session's spot chart from a fetch owned by the parent.
@@ -19,23 +20,40 @@ import type { DailySetup, SpotCandle5m } from '../lib/types'
  */
 export function SpotChartPanel({
   sessionDate,
-  candlesState,
+  prevSessionDate,
+  series,
+  loading,
+  error,
+  refreshing,
   reload,
   cutoff,
   setup,
   visibility,
+  timeframe,
 }: {
   sessionDate: CalendarDay
-  candlesState: AsyncState<SpotCandle5m[]>
+  prevSessionDate: CalendarDay | null
+  series: SpotSeries
+  loading: boolean
+  error: Error | null
+  refreshing: boolean
   reload: () => void
   cutoff: number
   setup: DailySetup | undefined
   visibility: OverlayVisibility
+  timeframe: Timeframe
 }) {
-  const candles = candlesState.status === 'ready' ? candlesState.data : []
-  const visibleCandles = useMemo(() => barsUpTo(candles, cutoff), [candles, cutoff])
-  const first = candles[0]
-  const last = candles[candles.length - 1]
+  // Prev is never replayed — it is what the market already did before the open,
+  // and the sniper levels on this chart are derived from it.
+  const visibleToday = useMemo(() => barsUpTo(series.todayBars, cutoff), [series.todayBars, cutoff])
+  const candles = useMemo(
+    () => [...series.prevBars, ...visibleToday],
+    [series.prevBars, visibleToday],
+  )
+
+  const today = series.todayBars
+  const first = today[0]
+  const last = today[today.length - 1]
 
   // Memoised so the chart's overlay effect only re-runs when the lines actually
   // change, rather than on every render of this panel.
@@ -46,32 +64,43 @@ export function SpotChartPanel({
     <section className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="font-mono text-sm text-zinc-400">
-          Nifty 50 spot · 5&#8209;min · {formatSessionDate(sessionDate)}
+          Nifty 50 spot · {TIMEFRAME_LABELS[timeframe]} ·{' '}
+          {prevSessionDate ? `${formatSessionDate(prevSessionDate)} → ` : ''}
+          {formatSessionDate(sessionDate)}
         </h2>
-        {candlesState.status === 'ready' && candles.length > 0 && first && last && (
+        {!loading && !error && today.length > 0 && first && last && (
           <span className="font-mono text-xs text-zinc-600">
-            {formatCount(candles.length)} bars · {formatIstTime(first.epochSeconds)}–
-            {formatIstTime(last.epochSeconds)} IST
+            {formatCount(series.prevBars.length)} prev · {formatCount(today.length)} today
+            {timeframe === '5m' && (
+              <>
+                {' '}
+                · {formatIstTime(first.epochSeconds)}–{formatIstTime(last.epochSeconds)} IST
+              </>
+            )}
           </span>
         )}
       </div>
 
-      {candlesState.status === 'loading' && <LoadingPanel label="Loading 5-minute spot candles…" />}
+      {loading && <LoadingPanel label="Loading spot candles…" />}
 
-      {candlesState.status === 'error' && (
-        <ErrorPanel title="Could not load spot candles" error={candlesState.error} onRetry={reload} />
-      )}
+      {error && <ErrorPanel title="Could not load spot candles" error={error} onRetry={reload} />}
 
-      {candlesState.status === 'ready' &&
+      {!loading &&
+        !error &&
         (candles.length === 0 ? (
-          <EmptyPanel message={`No 5-minute spot candles stored for ${formatSessionDate(sessionDate)}.`} />
+          <EmptyPanel message={`No spot candles stored for ${formatSessionDate(sessionDate)}.`} />
         ) : (
           <div
             className={`h-[340px] rounded-md border border-zinc-800 bg-zinc-900/20 p-1 transition-opacity sm:h-[440px] ${
-              candlesState.refreshing ? 'opacity-50' : 'opacity-100'
+              refreshing ? 'opacity-50' : 'opacity-100'
             }`}
           >
-            <SpotChart candles={visibleCandles} overlays={overlays} sessionDate={sessionDate} />
+            <SpotChart
+              candles={candles}
+              firstTodayEpoch={today[0]?.epochSeconds ?? null}
+              overlays={overlays}
+              sessionDate={sessionDate}
+            />
           </div>
         ))}
 
@@ -86,9 +115,9 @@ export function SpotChartPanel({
 
       {/* A short session is real data, not a gap — say so rather than letting a
           sparse chart read as broken. The Diwali Muhurat session has 12 bars. */}
-      {candlesState.status === 'ready' && candles.length > 0 && candles.length < 60 && (
+      {!loading && !error && timeframe === '5m' && today.length > 0 && today.length < 60 && (
         <p className="font-mono text-[12px] text-zinc-500">
-          Short session — {formatCount(candles.length)} bars instead of the usual ~75. This is real
+          Short session — {formatCount(today.length)} bars instead of the usual ~75. This is real
           market data, not missing bars.
         </p>
       )}

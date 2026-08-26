@@ -60,8 +60,11 @@ end-of-session value. `sniper_bt_daily_setup.prev_close` matches the daily close
 in 699/699 rows and the last 5-min bar in only 18, so the pipeline uses official
 closes consistently.
 
-Practical consequence: the "Prev Close" overlay line will not sit on top of the
-previous day's final candle. That is correct, not a rendering bug.
+Practical consequence: in the 5-minute timeframe the "Prev Close" overlay line
+will not sit on top of the previous day's final candle. That is correct, not a
+rendering bug. In the daily timeframe it does sit on the previous candle, since
+that candle is the daily row itself — see "Timeframes and the previous session"
+below.
 
 ---
 
@@ -163,6 +166,48 @@ together. The handful of arbitrary `text-[Npx]` sizes were bumped by the same
 step, since those do not read from those variables — if you add one, match the
 scale rather than the old numbers.
 
+### Timeframes and the previous session
+
+The main spot chart carries the **previous session as well as the active one**,
+the same way the four leg charts always have — the sniper levels are derived
+from the previous session, so having to switch sessions to see what they came
+from defeated the purpose. The prior day is shaded and divided off, and it is
+never subject to replay: what the market did before the open is known before
+the open.
+
+A **5m / 1D toggle** in the floating toolbar switches all five charts between
+the intraday feed and one candle per session. Both timeframes cover the same
+two sessions, so this is a change of resolution, not of range — daily therefore
+has exactly two candles per chart, which is the point: it is for seeing where
+the session sat against the day before, not for scanning history. The choice is
+remembered in `localStorage`, and changing it rewinds replay, exactly as a
+session or batch change does.
+
+Where a daily candle comes from differs between spot and the legs, and the data
+forces the asymmetry rather than taste choosing it:
+
+- **Spot** reads `sniper_bt_spot_candles_daily`, whose close is the *official*
+  one. `prev_close` — what the bands are derived from — matches that daily
+  close in 699/699 rows, so the Prev Close overlay lands exactly on the previous
+  daily candle. The cost is the difference documented above: spot's daily close
+  is not its own last 5-minute bar.
+- **Options** have no daily table (the spec dropped it as redundant), so a
+  leg's daily candle is aggregated from the 5-minute bars already fetched for
+  that leg.
+
+Every daily candle is stamped at its session's 09:15 IST open rather than at
+its first bar's own time, so all five charts put a given day at the same x
+position — which is what keeps crosshair sync and the replay cutoff working in
+the daily timeframe.
+
+One framing detail worth knowing if you touch `chartTheme.ts`: `fitContent`
+alone is not enough for a two-candle chart. `maxBarSpacing` binds long before
+two bars can fill a 1300px pane, so the pair ends up jammed against the right
+edge with the rest empty. `frameContent` fits and then recentres when the data
+cannot fill the pane. It predicts the clamped spacing rather than reading the
+range back, because `fitContent` is deferred to the next paint and reading it
+on the same tick returns the *previous* timeframe's range.
+
 ### Theming
 
 Light and dark, toggled from the header and remembered in `localStorage`; the
@@ -215,6 +260,8 @@ All Supabase reads go through `src/lib/`, not through components:
 | `format.ts` | Display formatting. Calendar dates never pass through `new Date()`; instants render in IST. |
 | `calendar.ts` | Calendar-day arithmetic on `'YYYY-MM-DD'` strings, UTC-anchored — never browser-local. |
 | `legs.ts` | Assembles the four leg series per batch, and owns the fixed quadrant order. |
+| `spot.ts` | Assembles the main chart's series — previous session plus active — for either timeframe. |
+| `timeframe.ts` | The 5m/1D choice, the shared `ChartBar` shape, and session aggregation. Read the module comment before changing where a daily candle comes from. |
 | `replay.ts` | Converts a revealed-bar count into a cutoff *instant*, shared by the spot chart and all four leg charts despite their different bar counts. |
 | `chartSync.ts` | Cross-chart crosshair sync. Each chart supplies its own price at a given time rather than the hovered chart's price being forwarded — see the module comment. |
 | `chartTheme.ts` | Shared chart appearance and the overlay autoscale provider, so all five charts stay one panel. |

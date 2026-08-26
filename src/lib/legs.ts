@@ -6,6 +6,8 @@ import type {
   StrikeRef,
 } from './types'
 import type { CalendarDay } from './calendar'
+import { dailyFromIntraday } from './spot'
+import type { ChartBar, Timeframe } from './timeframe'
 
 /**
  * Assembling the four leg charts for a batch.
@@ -31,10 +33,16 @@ export function legHasSniperLevel(role: LegRole): boolean {
 export interface LegSeries {
   role: LegRole
   ref: StrikeRef
-  /** Prior session's bars. Always shown in full — never subject to replay. */
-  prevBars: OptionCandle5m[]
+  /**
+   * Prior session's bars. Always shown in full — never subject to replay.
+   *
+   * ChartBar rather than OptionCandle5m because the daily timeframe replaces
+   * the run of 5-minute bars with one aggregated candle, which has no
+   * instrument key or candle date of its own.
+   */
+  prevBars: ChartBar[]
   /** Active session's bars. Phase 6 reveals these progressively. */
-  todayBars: OptionCandle5m[]
+  todayBars: ChartBar[]
   /**
    * This contract's own prior-session close and high, per spec §4.4 — the close
    * of the last prev-day bar and the max high across them.
@@ -61,6 +69,7 @@ export function buildLegSeries(
   refs: StrikeRef[],
   candles: OptionCandle5m[],
   setup: DailySetup | undefined,
+  timeframe: Timeframe = '5m',
 ): LegSeries[] {
   if (!setup) return []
 
@@ -88,6 +97,15 @@ export function buildLegSeries(
         role,
         ref,
         ...series,
+        // Aggregated AFTER prevClose/prevHigh are derived, so those two carry
+        // the same values in either timeframe rather than being recomputed
+        // from a candle that has already lost its intraday detail.
+        ...(timeframe === '1D'
+          ? {
+              prevBars: dailyFromIntraday(series.prevBars, setup.prevSessionDate),
+              todayBars: dailyFromIntraday(series.todayBars, setup.sessionDate),
+            }
+          : {}),
         sniperLevel: legHasSniperLevel(role) ? setup.sniperPoint : null,
       },
     ]

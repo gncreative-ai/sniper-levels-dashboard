@@ -6,6 +6,7 @@ import type {
   Time,
   UTCTimestamp,
 } from 'lightweight-charts'
+import { frameContent } from './chartTheme'
 
 /**
  * Cross-chart crosshair synchronisation (spec §4.5): hovering any one of the
@@ -37,6 +38,8 @@ export interface SyncedChart {
   series: ISeriesApi<'Candlestick'>
   /** This chart's own close price at a given chart-time, or undefined if it has no bar there. */
   getPriceAt: (time: UTCTimestamp) => number | undefined
+  /** How many bars this chart currently holds. Read at call time — it changes. */
+  barCount: () => number
 }
 
 export interface ChartSyncGroup {
@@ -76,7 +79,7 @@ export function createChartSyncGroup(): ChartSyncGroup {
 
   return {
     fitAll() {
-      for (const member of members) member.chart.timeScale().fitContent()
+      for (const member of members) frameContent(member.chart, member.barCount())
     },
 
     register(member) {

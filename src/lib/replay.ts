@@ -1,14 +1,17 @@
-import type { OptionCandle5m, SpotCandle5m } from './types'
+import type { ChartBar } from './timeframe'
 
 /**
  * Replay reveals the active session progressively (spec §4.2).
  *
- * Position is tracked as a count of revealed *spot* bars, because the spot
- * chart is what the position readout refers to. It cannot be reused as an index
- * into the leg charts: a session has 75 spot bars but 77 option bars, since the
- * option feed runs to 15:35 IST while spot stops at 15:25. Revealing "bar n" on
- * every chart by index would drift the legs ahead of spot by two bars near the
- * close.
+ * Position is tracked as a count of revealed *spot* bars — specifically the
+ * ACTIVE session's spot bars. The previous session now sits on the main chart
+ * too (as it always has on the legs) and is never replayed, so it must not
+ * count towards the position or the readout would start part-way through.
+ *
+ * That count cannot be reused as an index into the leg charts: a session has 75
+ * spot bars but 77 option bars, since the option feed runs to 15:35 IST while
+ * spot stops at 15:25. Revealing "bar n" on every chart by index would drift the
+ * legs ahead of spot by two bars near the close.
  *
  * So the spot position is converted to a cutoff *instant*, and every chart
  * reveals the bars at or before it. That stays correct no matter how the feeds
@@ -20,7 +23,10 @@ const REVEAL_NONE = Number.NEGATIVE_INFINITY
 /** Reveal everything, including option bars past the last spot bar. */
 const REVEAL_ALL = Number.POSITIVE_INFINITY
 
-export function computeRevealCutoff(spotCandles: SpotCandle5m[], revealedCount: number): number {
+export function computeRevealCutoff(
+  spotCandles: readonly ChartBar[],
+  revealedCount: number,
+): number {
   if (revealedCount <= 0) return REVEAL_NONE
 
   // At the end, reveal everything — otherwise the option bars after 15:25 could
@@ -48,6 +54,9 @@ export function barsUpTo<T extends { epochSeconds: number }>(bars: T[], cutoff: 
 }
 
 /** Convenience for the leg charts, which only ever reveal their today portion. */
-export function revealedTodayBars(todayBars: OptionCandle5m[], cutoff: number): OptionCandle5m[] {
+export function revealedTodayBars<T extends { epochSeconds: number }>(
+  todayBars: T[],
+  cutoff: number,
+): T[] {
   return barsUpTo(todayBars, cutoff)
 }

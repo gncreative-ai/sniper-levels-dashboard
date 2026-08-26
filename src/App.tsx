@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { ActiveSessionPanel } from './components/ActiveSessionPanel'
 import { DateRangeSelector, type DateRange } from './components/DateRangeSelector'
 import { ControlBar } from './components/ControlBar'
@@ -11,7 +11,17 @@ import { useAsync } from './hooks/useAsync'
 import { addCalendarMonths, clampCalendarDay } from './lib/calendar'
 import type { CalendarDay } from './lib/calendar'
 import { formatCount } from './lib/format'
-import { fetchSessionBounds, fetchSessionSetup, fetchSessionsInRange, fetchSpotCandles5m, TABLES } from './lib/queries'
+import {
+  fetchSessionBounds,
+  fetchSessionSetup,
+  fetchSessionsInRange,
+  fetchSpotCandles5mFor,
+  fetchSpotCandlesDailyFor,
+  TABLES,
+} from './lib/queries'
+import { buildSpotSeries, EMPTY_SPOT_SERIES } from './lib/spot'
+import { TimeframeContext } from './contexts/TimeframeContext'
+import { initialTimeframe, persistTimeframe, type Timeframe } from './lib/timeframe'
 import { supabaseProjectRef } from './lib/supabase'
 import type { AtmBatch, SessionBounds } from './lib/types'
 import { DEFAULT_OVERLAY_VISIBILITY, type OverlayId } from './lib/overlays'
@@ -73,9 +83,23 @@ export default function App() {
     [orientation, toggleOrientation],
   )
 
+  // 5-minute or one candle per session, remembered like the other workspace
+  // preferences. Both timeframes show the same two sessions — see lib/timeframe.
+  const [timeframe, setTimeframeState] = useState<Timeframe>(initialTimeframe)
+  const setTimeframe = useCallback((next: Timeframe) => {
+    persistTimeframe(next)
+    setTimeframeState(next)
+  }, [])
+
+  const timeframeState = useMemo(
+    () => ({ timeframe, setTimeframe }),
+    [timeframe, setTimeframe],
+  )
+
   return (
     <ThemeContext.Provider value={themeState}>
     <ToolbarContext.Provider value={toolbarState}>
+    <TimeframeContext.Provider value={timeframeState}>
     <div className="min-h-full bg-zinc-950">
       {/* Space reserved for whichever dock is active, applied to the whole page
           rather than to the session content: the floating bar sits above the
@@ -121,6 +145,7 @@ export default function App() {
         </footer>
       </div>
     </div>
+    </TimeframeContext.Provider>
     </ToolbarContext.Provider>
     </ThemeContext.Provider>
   )
@@ -293,20 +318,78 @@ function SessionOverlays({
   const setup = state.status === 'ready' ? state.data : {}
   const hasAnyBatch = Object.keys(setup).length > 0
 
+  const { timeframe } = useContext(TimeframeContext)
+
+  /**
+   * The session before this one, from the setup row.
+   *
+   * All three batches carry the same prev_session_date, so any of them will
+   * do. Null when the session has no setup at all — the first day in the
+   * dataset, or one whose weekly expiry has not passed yet — in which case the
+   * chart shows the active session alone.
+   */
+  const prevSessionDate = useMemo(() => {
+    const anyBatch = Object.values(setup)[0]
+    const prev = anyBatch?.prevSessionDate ?? null
+
+    // A session is never its own predecessor. It can look like one for a single
+    // render: switching session keeps the old setup on screen while the new one
+    // loads (keepPreviousData), so `prev` briefly names the session that has
+    // just become the active one. Drawing that day as both previous and active
+    // concatenates the same bars twice, and Lightweight Charts rejects the
+    // result outright — "data must be asc ordered by time".
+    return prev === sessionDate ? null : prev
+  }, [setup, sessionDate])
+
   // Fetched here rather than inside SpotChartPanel: replay needs this same
   // array to compute the cutoff shared with the four leg charts (lib/replay.ts).
-  const loadSpotCandles = useCallback(() => fetchSpotCandles5m(sessionDate), [sessionDate])
-  const { state: spotState, reload: reloadSpot } = useAsync(loadSpotCandles, [sessionDate], {
+  //
+  // Both timeframes are fetched together rather than on demand. It is two small
+  // requests for two days, and it means flipping the timeframe toggle is
+  // instant instead of showing a spinner over a chart the user is reading —
+  // the same reasoning as fetching all three ATM batches at once.
+  const spotDates = useMemo(
+    () => (prevSessionDate ? [prevSessionDate, sessionDate] : [sessionDate]),
+    [prevSessionDate, sessionDate],
+  )
+  const spotKey = spotDates.join('|')
+
+  const loadSpot = useCallback(
+    async () => ({
+      fiveMinute: await fetchSpotCandles5mFor(spotDates),
+      daily: await fetchSpotCandlesDailyFor(spotDates),
+    }),
+    [spotDates],
+  )
+  const { state: spotState, reload: reloadSpot } = useAsync(loadSpot, [spotKey], {
     keepPreviousData: true,
   })
-  const spotCandles = spotState.status === 'ready' ? spotState.data : []
 
-  // Position is tracked in spot-bar units; per spec §4.3 both a session and a
-  // batch change reset replay to bar 0 once it has been engaged.
-  const replay = useReplay(spotCandles.length, `${sessionDate}::${batch}`)
+  const spotSeries = useMemo(() => {
+    if (spotState.status !== 'ready') return EMPTY_SPOT_SERIES
+    return buildSpotSeries(
+      timeframe,
+      sessionDate,
+      prevSessionDate,
+      spotState.data.fiveMinute,
+      spotState.data.daily,
+    )
+  }, [spotState, timeframe, sessionDate, prevSessionDate])
+
+  // Position is tracked in ACTIVE-session spot bars; the previous session is
+  // always fully drawn and never replayed, so it is not counted here.
+  //
+  // Per spec §4.3 a session or batch change resets replay to bar 0 once it has
+  // been engaged. The timeframe is part of the key too: the bar count changes
+  // completely between 5m and daily, so a position carried across would mean
+  // something quite different on the other side.
+  const replay = useReplay(
+    spotSeries.todayBars.length,
+    `${sessionDate}::${batch}::${timeframe}`,
+  )
   const cutoff = useMemo(
-    () => computeRevealCutoff(spotCandles, replay.revealedCount),
-    [spotCandles, replay.revealedCount],
+    () => computeRevealCutoff(spotSeries.todayBars, replay.revealedCount),
+    [spotSeries.todayBars, replay.revealedCount],
   )
 
   // One sync group per session view (spec §4.5) — created once and shared by
@@ -364,8 +447,13 @@ function SessionOverlays({
           state that phase 7 builds on. The panel refetches and swaps its data. */}
       <SpotChartPanel
         sessionDate={sessionDate}
-        candlesState={spotState}
+        prevSessionDate={prevSessionDate}
+        series={spotSeries}
+        loading={spotState.status === 'loading'}
+        error={spotState.status === 'error' ? spotState.error : null}
+        refreshing={spotState.refreshing}
         reload={reloadSpot}
+        timeframe={timeframe}
         cutoff={cutoff}
         setup={setup[batch]}
         visibility={visibility}

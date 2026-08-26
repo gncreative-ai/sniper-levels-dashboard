@@ -2,7 +2,10 @@ import { useCallback, useMemo } from 'react'
 import { LegQuadrant } from './LegQuadrant'
 import { EmptyPanel, ErrorPanel, LoadingPanel } from './StatusPanels'
 import { useAsync } from '../hooks/useAsync'
+import { useContext } from 'react'
 import { buildLegSeries, distinctInstrumentKeys } from '../lib/legs'
+import { TimeframeContext } from '../contexts/TimeframeContext'
+import { TIMEFRAME_LABELS } from '../lib/timeframe'
 import { revealedTodayBars } from '../lib/replay'
 import { fetchOptionCandles5m, fetchStrikeRefs } from '../lib/queries'
 import { formatSessionDate } from '../lib/format'
@@ -46,16 +49,20 @@ export function LegQuadrantPanel({
     keepPreviousData: true,
   })
 
+  const { timeframe } = useContext(TimeframeContext)
+
   const legs = useMemo(() => {
     if (state.status !== 'ready') return []
 
     // Prev-day bars are never subject to replay (spec §4.2) — only today's
     // portion is truncated to the shared cutoff.
-    return buildLegSeries(batch, state.data.refs, state.data.candles, setup).map((leg) => ({
-      ...leg,
-      todayBars: revealedTodayBars(leg.todayBars, cutoff),
-    }))
-  }, [state, batch, setup, cutoff])
+    return buildLegSeries(batch, state.data.refs, state.data.candles, setup, timeframe).map(
+      (leg) => ({
+        ...leg,
+        todayBars: revealedTodayBars(leg.todayBars, cutoff),
+      }),
+    )
+  }, [state, batch, setup, cutoff, timeframe])
 
   if (!setup) {
     return (
@@ -67,7 +74,8 @@ export function LegQuadrantPanel({
     <section className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="font-mono text-sm text-zinc-400">
-          Option legs · {batch} batch · prev {formatSessionDate(setup.prevSessionDate)} →{' '}
+          Option legs · {TIMEFRAME_LABELS[timeframe]} · {batch} batch · prev{' '}
+          {formatSessionDate(setup.prevSessionDate)} →{' '}
           {formatSessionDate(setup.sessionDate)}
         </h2>
         <span className="font-mono text-xs text-zinc-600">
